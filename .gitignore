@@ -1,0 +1,18 @@
+cat <<EOF > .gitignore
+# --- System & Python ---
+__pycache__/
+*.py[cod]
+.env
+
+# --- Database ---
+postgres_data/
+
+# --- AI Datasets & Models (DO NOT COMMIT) ---
+Rust-Detection-1/
+runs/
+*.pt
+core
+
+# --- User Uploads ---
+uploaded_images/
+EOF

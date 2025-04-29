@@ -1,0 +1,49 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: infralens_ollama
+    network_mode: "host"   # Required for Linux/GPU to talk to localhost
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  backend:
+    build: .
+    image: infralens-backend:latest
+    container_name: infralens_backend
+    # Command to run ONLY the API
+    command: uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - ollama
+
+  frontend:
+    image: infralens-backend:latest  # Reuses the image we already built!
+    container_name: infralens_ui
+    # Command to run ONLY the Dashboard
+    command: streamlit run src/app/ui.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      # Tells Streamlit where to find the API
+      - API_URL=http://backend:8000 
+    depends_on:
+      - backend
+
+volumes:
+  ollama_data:

@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infralens-backend
+  labels:
+    app: infralens
+spec:
+  replicas: 3                     # <--- SHOWCASE: High Availability (3 copies)
+  strategy:
+    type: RollingUpdate           # <--- SHOWCASE: Zero-downtime updates
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: infralens
+  template:
+    metadata:
+      labels:
+        app: infralens
+    spec:
+      containers:
+      - name: backend
+        image: infralens-backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: OLLAMA_HOST
+          value: "http://host.docker.internal:11434" # Points to your host machine's Ollama
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"         # Hard limit to prevent crashing the server
+            cpu: "1000m"
+        # SENIOR TOUCH: Health Checks
+        livenessProbe:
+          httpGet:
+            path: /docs           # Checks if API is alive
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /docs
+            port: 8000
+          initialDelaySeconds: 5

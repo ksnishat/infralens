@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: infralens-service
+spec:
+  type: NodePort             # Exposes IP to the outside world
+  selector:
+    app: infralens           # Connects to the 3 pods above
+  ports:
+    - protocol: TCP
+      port: 8000             # The port other pods use
+      targetPort: 8000       # The port the container listens on
+      nodePort: 30000        # The port YOU use (http://localhost:30000)

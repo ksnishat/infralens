@@ -1,0 +1,162 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # 1. OLLAMA (LLM Service) - GPU Support
+  # ==========================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: infralens_ollama
+    # Use bridge network with host access for GPU
+    network_mode: "bridge"
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - infralens-network
+
+  # ==========================================
+  # 2. BACKEND (FastAPI with YOLO)
+  # ==========================================
+  backend:
+    image: ghcr.io/infralens/api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: infralens_backend
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - infralens_models:/app/models
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=llama3
+      - CONFIDENCE_THRESHOLD=0.25
+      - ENABLE_AGENT=true
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - infralens-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ==========================================
+  # 3. FRONTEND (Streamlit Dashboard)
+  # ==========================================
+  frontend:
+    image: ghcr.io/infralens/api:latest
+    container_name: infralens_frontend
+    command: streamlit run src/app/ui.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - API_URL=http://backend:8000
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - infralens-network
+
+  # ==========================================
+  # 4. MONITORING (Prometheus + Grafana)
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: infralens_prometheus
+    volumes:
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - infralens-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: infralens_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=infralens
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - infralens-network
+
+networks:
+  infralens-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  infralens_models:
+  prometheus_data:
+  grafana_data:

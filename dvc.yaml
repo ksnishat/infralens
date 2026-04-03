@@ -1,0 +1,59 @@
+# DVC Pipeline for InfraLens
+# Bronze → Silver → Gold image processing pipeline
+
+stages:
+  # === BRONZE LAYER: Raw data ingestion ===
+  extract_bronze:
+    cmd: python src/scripts/extract_bronze.py
+    deps:
+      - src/scripts/extract_bronze.py
+    outs:
+      - data/bronze/images_raw.dvc
+    desc: Collect raw inspection images (bronze layer)
+
+  # === BRONZE → SILVER: Preprocessing ===
+  preprocess_silver:
+    cmd: python src/scripts/preprocess_silver.py
+    deps:
+      - src/scripts/preprocess_silver.py
+      - data/bronze/images_raw.dvc
+      - src/config.py
+    outs:
+      - data/silver/images_processed.dvc
+      - data/silver/annotations.json
+    metrics:
+      - metrics/silver_preprocessing.json:
+          cache: false
+    desc: Resize, normalize, augment images (silver layer)
+
+  # === SILVER → GOLD: Labeling & annotation ===
+  label_gold:
+    cmd: python src/scripts/label_gold.py
+    deps:
+      - src/scripts/label_gold.py
+      - data/silver/images_processed.dvc
+    outs:
+      - data/gold/yolo_dataset.dvc
+      - data/gold/train.txt
+      - data/gold/val.txt
+    metrics:
+      - metrics/gold_labels.json:
+          cache: false
+    desc: YOLO-format annotations and dataset splits (gold layer)
+
+  # === MODEL TRAINING ===
+  train_yolo:
+    cmd: yolo train data=data/gold/yolo_dataset.yaml epochs=100
+    deps:
+      - data/gold/yolo_dataset.dvc
+      - data/gold/yolo_dataset.yaml
+    outs:
+      - models/rust_v8s_best.pt
+      - models/results.json
+    metrics:
+      - metrics/model_metrics.json:
+          cache: false
+    plots:
+      - plots/training_curves.png:
+          cache: false
+    desc: Train YOLOv8 model for rust detection

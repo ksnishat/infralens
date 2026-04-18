@@ -1,0 +1,240 @@
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infralens
+  labels:
+    app: infralens
+---
+# ConfigMap for non-secret configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: infralens-config
+  namespace: infralens
+data:
+  APP_NAME: "infralens"
+  APP_ENV: "production"
+  APP_LOG_LEVEL: "INFO"
+  CONFIDENCE_THRESHOLD: "0.25"
+  ENABLE_AGENT: "true"
+---
+# Secrets
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: infralens-secrets
+  namespace: infralens
+data:
+  POSTGRES_PASSWORD: "Y2hhbmdlbWU="
+---
+# FastAPI Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infralens-backend
+  namespace: infralens
+  labels:
+    app: infralens
+    component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: infralens
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: infralens
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/infralens/api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: infralens-config
+            - secretRef:
+                name: infralens-secrets
+          env:
+            - name: OLLAMA_HOST
+              value: "http://ollama-service:11434"
+            - name: OLLAMA_MODEL
+              value: "llama3"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          # Nvidia GPU device plugin - if this is a GPU node
+          # Uncomment for GPU nodes:
+          # securityContext:
+          #   capabilities:
+          #     add: ["SYS_NICE"]
+      # GPU support
+      # Uncomment for GPU nodes:
+      # enableServiceLinks: false
+      # containers:
+      #   - name: backend
+      #     securityContext:
+      #       privileges: true
+      # resources:
+      #   limits:
+      #     nvidia.com/gpu: 1
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: infralens-backend-service
+  namespace: infralens
+  labels:
+    app: infralens
+    component: backend
+spec:
+  selector:
+    app: infralens
+    component: backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infralens-frontend
+  namespace: infralens
+  labels:
+    app: infralens
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: infralens
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: infralens
+        component: frontend
+    spec:
+      containers:
+        - name: streamlit
+          image: ghcr.io/infralens/api:latest
+          command: ["streamlit", "run", "src/app/ui.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+          ports:
+            - containerPort: 8501
+          env:
+            - name: API_URL
+              value: "http://infralens-backend-service:8000"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: infralens-frontend-service
+  namespace: infralens
+  labels:
+    app: infralens
+    component: frontend
+spec:
+  selector:
+    app: infralens
+    component: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8501
+  type: ClusterIP
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: infralens-ingress
+  namespace: infralens
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - infralens.example.com
+      secretName: infralens-tls
+  rules:
+    - host: infralens.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: prefix
+            backend:
+              service:
+                name: infralens-backend-service
+                port:
+                  number: 80
+          - path: /
+            pathType: prefix
+            backend:
+              service:
+                name: infralens-frontend-service
+                port:
+                  number: 8501
+---
+# Horizontal Pod Autoscaler for backend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: infralens-backend-hpa
+  namespace: infralens
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: infralens-backend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# PersistentVolumeClaim for model weights
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: infralens-models-pvc
+  namespace: infralens
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

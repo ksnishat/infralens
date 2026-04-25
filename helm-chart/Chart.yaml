@@ -1,0 +1,14 @@
+apiVersion: v2
+name: infralens
+description: A Helm chart for InfraLens - Computer Vision Edge AI
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - computer-vision
+  - edge-ai
+  - yolo
+  - fastapi
+maintainers:
+  - name: Khaled Saifullah
+    email: ksnishaat@gmail.com

@@ -1,0 +1,51 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/infralens/api
+  pullPolicy: IfNotPresent
+  tag: latest
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: infralens.example.com
+  tls: true
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2
+    memory: 2Gi
+    nvidia.com/gpu: 1
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilization: 70
+  targetMemoryUtilization: 80
+
+env:
+  APP_NAME: infralens
+  APP_ENV: production
+  APP_LOG_LEVEL: INFO
+  CONFIDENCE_THRESHOLD: "0.25"
+  ENABLE_AGENT: "true"
+  OLLAMA_HOST: http://ollama-service:11434
+  OLLAMA_MODEL: llama3
+
+persistence:
+  enabled: true
+  size: 5Gi
+  accessMode: ReadWriteOnce
+
+streamlit:
+  enabled: true
+  port: 8501
+  replicas: 1

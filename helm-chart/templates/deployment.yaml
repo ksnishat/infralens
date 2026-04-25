@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "infralens.fullname" . }}-backend
+  labels:
+    app: {{ include "infralens.fullname" . }}
+    component: backend
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "infralens.fullname" . }}
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: {{ include "infralens.fullname" . }}
+        component: backend
+    spec:
+      {{- with .Values.resources.limits }}
+      containers:
+        - name: backend
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: {{ include "infralens.fullname" . }}-config
+            - secretRef:
+                name: {{ include "infralens.fullname" . }}-secrets
+          env:
+            - name: OLLAMA_HOST
+              value: {{ .Values.env.OLLAMA_HOST | quote }}
+            - name: OLLAMA_MODEL
+              value: {{ .Values.env.OLLAMA_MODEL | quote }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+              nvidia.com/gpu: {{ .Values.resources.limits.nvidia.com/gpu }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: model-storage
+              mountPath: /app/models
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: {{ include "infralens.fullname" . }}-models-pvc
+      {{- end }}

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "infralens.fullname" . }}-config
+data:
+  APP_NAME: {{ .Values.env.APP_NAME | quote }}
+  APP_ENV: {{ .Values.env.APP_ENV | quote }}
+  APP_LOG_LEVEL: {{ .Values.env.APP_LOG_LEVEL | quote }}
+  CONFIDENCE_THRESHOLD: {{ .Values.env.CONFIDENCE_THRESHOLD | quote }}
+  ENABLE_AGENT: {{ .Values.env.ENABLE_AGENT | quote }}
+  OLLAMA_HOST: {{ .Values.env.OLLAMA_HOST | quote }}
+  OLLAMA_MODEL: {{ .Values.env.OLLAMA_MODEL | quote }}

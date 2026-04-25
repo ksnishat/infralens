@@ -1,0 +1,37 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "infralens.fullname" . }}-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    {{- if .Values.ingress.tls }}
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    {{- end }}
+spec:
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ include "infralens.fullname" . }}-tls
+  {{- end }}
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "infralens.fullname" . }}-backend-service
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "infralens.fullname" . }}-frontend-service
+                port:
+                  number: 8501
+{{- end }}

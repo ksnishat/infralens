@@ -28,6 +28,14 @@
 - **Edge AI Ready:** Optimized for NVIDIA GPU passthrough on edge devices and K8s clusters.
 - **Multi-language Reports:** Generates technical reports in German and English per ISO standards.
 
+
+### Recent Improvements (2026)
+🔧 **Makefile** — Standardized commands: `make test`, `make lint`, `make docker-up`, `make k8s-deploy`
+📦 **pyproject.toml** — Modern Python packaging with dependencies, entry points, ruff/mypy config
+🔒 **Pre-commit hooks** — Ruff, mypy, black, trailing whitespace, YAML validation
+📈 **MLflow Tracking** — YOLOv8 training with MLflow experiment tracking, data augmentation with bbox preservation
+☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring)
+
 ## Architecture
 
 ```mermaid

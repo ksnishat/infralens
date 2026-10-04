@@ -1,0 +1,58 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+dist/
+build/
+.eggs/
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+
+# --- Environment Variables ---
+.env
+.env.*
+!.env.template
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb.gz
+
+# --- Logs ---
+logs/
+*.log
+
+# --- AI Models & Datasets (DO NOT COMMIT) ---
+runs/
+*.pt
+*.pth
+*.pkl
+*.onnx
+*.h5
+ai_models/
+core
+
+# --- User Uploads ---
+uploaded_images/
+
+# --- DVC ---
+.dvc/cache/
+.dvc/tmp/
+
+# --- Tests ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- OS ---
+Thumbs.db

@@ -15,6 +15,25 @@ def client():
     return TestClient(app, raise_server_exceptions=False)
 
 
+def _model_available() -> bool:
+    """Whether the trained YOLO checkpoint is present on disk.
+
+    The weights are a large binary and are not committed, so inference tests
+    are skipped rather than failed on a fresh clone or in CI. This checks the
+    file rather than the loaded module attribute, because the model is loaded
+    at import time and may be None if the checkpoint is absent.
+    """
+    import os
+
+    return os.path.exists(os.getenv("MODEL_PATH", "src/ai_models/rust_v8s_best.pt"))
+
+
+requires_model = pytest.mark.skipif(
+    not _model_available(),
+    reason="YOLO checkpoint not present (train the model or fetch it via DVC)",
+)
+
+
 @pytest.fixture
 def dummy_image(tmp_path):
     """Create a small dummy JPEG image for upload tests."""
@@ -49,6 +68,7 @@ class TestHealth:
 class TestDetection:
     """Test /predict endpoint."""
 
+    @requires_model
     def test_predict_returns_detections_list(self, client, dummy_image):
         with open(dummy_image, "rb") as f:
             response = client.post("/predict", files={"file": ("dummy.jpg", f.read(), "image/jpeg")})
@@ -59,6 +79,7 @@ class TestDetection:
         assert isinstance(data["detections"], list)
         assert data["filename"] == "dummy.jpg"
 
+    @requires_model
     def test_predict_returns_detection_structure(self, client, dummy_image):
         """Each detection should have class, confidence, bbox fields."""
         with open(dummy_image, "rb") as f:
@@ -70,6 +91,7 @@ class TestDetection:
                 assert "confidence" in det
                 assert "bbox" in det
 
+    @requires_model
     def test_predict_with_confidence_threshold(self, client, dummy_image):
         """Test threshold slider functionality via request params."""
         with open(dummy_image, "rb") as f:
@@ -91,6 +113,7 @@ class TestDetection:
 class TestReportAnalysis:
     """Test /analyze-report endpoint (YOLO + Llama 3)."""
 
+    @requires_model
     def test_analyze_report_returns_safety_report(self, client, dummy_image):
         with open(dummy_image, "rb") as f:
             response = client.post("/analyze-report", files={"file": f.read()})

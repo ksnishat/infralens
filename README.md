@@ -16,12 +16,12 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![OS: Linux](https://img.shields.io/badge/OS-Linux-2F2F2F?style=flat)
 
-**InfraLens** is an automated computer vision system for industrial safety. It detects corrosion on infrastructure using a custom-trained **YOLOv8** model and employs a **Generative AI Agent (Llama 3)** to draft technical safety reports in German/English compliant with ISO standards.
+**InfraLens** is an automated computer vision system for industrial safety. It detects corrosion on infrastructure using a custom-trained **YOLOv8** model and employs a **Generative AI agent (a local LLM via Ollama)** to draft technical safety reports in German/English compliant with ISO standards.
 
 ## Key Features
 
 - **Custom Vision:** YOLOv8 model (`rust_v8s_best.pt`) for surface-defect detection.
-- **AI Safety Consultant:** Local Llama 3 agent (via Ollama) with template-based fallback for automated report generation and recommendations.
+- **AI Safety Consultant:** Local LLM agent (via Ollama, model configurable) with template-based fallback for automated report generation and recommendations.
 - **Microservices Architecture:** Containerized Backend (FastAPI), Frontend (Streamlit), and AI Engine.
 - **Deployment:** Docker Compose for local development and Kubernetes manifests in `k8s/` for production.
 - **Full CI/CD:** GitHub Actions for automated testing, building, and deployment.
@@ -57,7 +57,7 @@ graph TD
     
     %% AI Agent
     subgraph Agent[GenAI Agent Layer]
-        Ollama[Llama 3 via Ollama<br/>Report Generation] -->|Input: Detection Metrics| Report[Technical Report<br/>German/English]
+        Ollama[Local LLM via Ollama<br/>Report Generation] -->|Input: Detection Metrics| Report[Technical Report<br/>German/English]
         Analysis --> Ollama
     end
     
@@ -97,7 +97,7 @@ graph TD
 |---------|-------------|----------------|---------------------------|
 | **Rust Detection** | YOLOv8 custom model for corrosion detection | Automates a first-pass visual triage of inspection imagery | Meets DIN EN ISO 12944 corrosion protection standards |
 | **Severity Assessment** | AI-powered severity classification (low/medium/high) | Prioritizes maintenance resources effectively | Aligns with TÜV inspection requirements |
-| **Automated Reporting** | Llama 3 generates ISO-compliant report drafts in German/English | Removes the blank-page step from inspection write-ups | Supports German regulatory documentation (Bauteilkataloge) |
+| **Automated Reporting** | A local LLM generates ISO-compliant report drafts in German/English | Removes the blank-page step from inspection write-ups | Supports German regulatory documentation (Bauteilkataloge) |
 | **Edge Deployment** | Optimized for NVIDIA GPU edge devices | Enables on-site inspection without cloud dependency | Critical for remote German infrastructure (bridges, railways) |
 | **Real-time Detection** | Streamlit dashboard with live detection visualization | Enables immediate decision-making | Supports German safety regulations (DGUV Vorschrift 3) |
 | **Scalable Architecture** | Kubernetes-ready with HPA and GPU scheduling | Handles large-scale infrastructure monitoring | Compatible with German Industrie 4.0 cloud infrastructure |
@@ -238,7 +238,7 @@ kubectl apply -f k8s/
 
 ## Tech Stack
 
-- **AI**: YOLOv8s detection, Ollama + Llama 3 for report generation
+- **AI**: YOLOv8s detection, Ollama + a local LLM for report generation
 - **Backend**: FastAPI + Uvicorn, SQLAlchemy + PostgreSQL, Alembic
 - **Frontend**: Streamlit
 - **Monitoring**: Prometheus + Grafana, structured JSON logging

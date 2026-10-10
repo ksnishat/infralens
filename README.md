@@ -180,8 +180,11 @@ PYTHONPATH=src uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```bash
 curl http://localhost:8001/                         # {"status":"online","service":"InfraLens Backend"}
 curl http://localhost:8001/metrics | grep infralens # Prometheus metrics
-curl -X POST http://localhost:8001/predict \
-     -F "file=@Rust Detection.v1i.yolov8/valid/images/<image>.jpg"
+
+# The dataset directory name contains a space, so quote the path.
+IMG=$(find "Rust Detection.v1i.yolov8/valid/images" -type f | head -1)
+curl -X POST http://localhost:8001/predict -F "file=@$IMG"
+# {"filename":"...","detections":[{"class":"Corrosion","confidence":0.575,"bbox":[...]}]}
 ```
 
 ### 5. Or launch the whole Docker stack

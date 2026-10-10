@@ -7,8 +7,8 @@ pydantic-settings==2.1.0
 python-dotenv==1.0.1
 alembic==1.13.1
 python-multipart
-roboflow         # <--- NEW
-ultralytics      # <--- NEW
+roboflow
+ultralytics
 streamlit
 requests
 watchdog
@@ -19,3 +19,12 @@ mlflow
 numpy
 opencv-python-headless
 pillow
+albumentations
+pyyaml
+prometheus-client
+python-json-logger
+
+# --- Tests ---
+pytest
+pytest-cov
+httpx

@@ -8,7 +8,6 @@ services:
     image: ollama/ollama:latest
     container_name: infralens_ollama
     # Use bridge network with host access for GPU
-    network_mode: "bridge"
     ports:
       - "11434:11434"
     volumes:

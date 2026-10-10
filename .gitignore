@@ -33,6 +33,8 @@ logs/
 *.log
 
 # --- AI Models & Datasets (DO NOT COMMIT) ---
+"Rust Detection.v1i.yolov8/"
+*.v1i.yolov8/
 runs/
 *.pt
 *.pth

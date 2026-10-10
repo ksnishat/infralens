@@ -4,8 +4,43 @@ from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 import io
+import time
 from PIL import Image
 from ultralytics import YOLO
+
+# Prometheus instrumentation
+try:
+    from prometheus_client import (
+        Counter,
+        Histogram,
+        Gauge,
+        generate_latest,
+        CONTENT_TYPE_LATEST,
+    )
+    from fastapi import Response
+
+    REQUEST_COUNT = Counter(
+        "infralens_requests_total",
+        "Total InfraLens API requests",
+        ["endpoint", "status"],
+    )
+    DETECTION_COUNT = Counter(
+        "infralens_detections_total",
+        "Total rust detections returned",
+        ["class_name"],
+    )
+    INFERENCE_LATENCY = Histogram(
+        "infralens_inference_latency_seconds",
+        "YOLO inference latency in seconds",
+        buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+    )
+    MODEL_LOADED = Gauge(
+        "infralens_model_loaded",
+        "1 if the rust detection model is loaded, 0 otherwise",
+    )
+except ImportError:  # pragma: no cover
+    REQUEST_COUNT = DETECTION_COUNT = INFERENCE_LATENCY = MODEL_LOADED = None
+    generate_latest = CONTENT_TYPE_LATEST = Response = None
 
 # Import our new AI Agent (The Brain)
 # Ensure you created src/core/agent.py as discussed!
@@ -39,6 +74,17 @@ except Exception as e:
     print(f"❌ Error loading YOLO model: {e}")
     model = None
 
+if MODEL_LOADED is not None:
+    MODEL_LOADED.set(1 if model is not None else 0)
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    if generate_latest is None:
+        raise HTTPException(status_code=501, detail="prometheus_client not installed")
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 @app.get("/")
 async def health_check():
     """Heartbeat endpoint to check if the API is running."""
@@ -51,24 +97,36 @@ async def predict_rust(file: UploadFile = File(...)):
     Returns: JSON with bounding boxes and confidence scores.
     """
     if not model:
+        if REQUEST_COUNT is not None:
+            REQUEST_COUNT.labels(endpoint="predict", status="500").inc()
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     # 1. Read Image
     contents = await file.read()
     image = Image.open(io.BytesIO(contents))
-    
+
     # 2. Run Inference
+    t0 = time.perf_counter()
     results = model(image)
-    
+    elapsed = time.perf_counter() - t0
+
     # 3. Process Results
     detections = []
     for result in results:
         for box in result.boxes:
+            cls_name = model.names[int(box.cls)]
             detections.append({
-                "class": model.names[int(box.cls)],
+                "class": cls_name,
                 "confidence": float(box.conf),
                 "bbox": box.xyxy.tolist()[0]  # [x1, y1, x2, y2]
             })
+
+    # 4. Record metrics
+    if REQUEST_COUNT is not None:
+        REQUEST_COUNT.labels(endpoint="predict", status="200").inc()
+        INFERENCE_LATENCY.observe(elapsed)
+        for det in detections:
+            DETECTION_COUNT.labels(class_name=det["class"]).inc()
 
     return {"filename": file.filename, "detections": detections}
 

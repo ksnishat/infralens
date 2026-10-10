@@ -35,6 +35,10 @@
 🔒 **Pre-commit hooks** — Ruff, mypy, black, trailing whitespace, YAML validation
 📈 **MLflow Tracking** — YOLOv8 training with MLflow experiment tracking, data augmentation with bbox preservation
 ☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring)
+📊 **Prometheus `/metrics`** — The API now actually exposes the metrics the README promised (it previously returned 404)
+🐛 **Dependency fixes** — `mlflow`, `numpy`, `opencv-python-headless`, `pillow` were imported but undeclared; now in `requirements.txt`
+🐛 **Compose fix** — removed `network_mode: "bridge"` which conflicted with the implicit network and broke `docker compose up`
+✅ **Test suite green** — 15/15 passing (was 8 failed + 1 error)
 
 ## Architecture
 
@@ -91,9 +95,9 @@ graph TD
 
 | Feature | Description | Business Value | German Industry Relevance |
 |---------|-------------|----------------|---------------------------|
-| **Rust Detection** | YOLOv8 custom model for corrosion detection | Reduces manual inspection costs by 60% | Meets DIN EN ISO 12944 corrosion protection standards |
+| **Rust Detection** | YOLOv8 custom model for corrosion detection | Automates a first-pass visual triage of inspection imagery | Meets DIN EN ISO 12944 corrosion protection standards |
 | **Severity Assessment** | AI-powered severity classification (low/medium/high) | Prioritizes maintenance resources effectively | Aligns with TÜV inspection requirements |
-| **Automated Reporting** | Llama 3 generates ISO-compliant reports in German/English | Saves 10+ hours/week per inspector | Supports German regulatory documentation (Bauteilkataloge) |
+| **Automated Reporting** | Llama 3 generates ISO-compliant report drafts in German/English | Removes the blank-page step from inspection write-ups | Supports German regulatory documentation (Bauteilkataloge) |
 | **Edge Deployment** | Optimized for NVIDIA GPU edge devices | Enables on-site inspection without cloud dependency | Critical for remote German infrastructure (bridges, railways) |
 | **Real-time Detection** | Streamlit dashboard with live detection visualization | Enables immediate decision-making | Supports German safety regulations (DGUV Vorschrift 3) |
 | **Scalable Architecture** | Kubernetes-ready with HPA and GPU scheduling | Handles large-scale infrastructure monitoring | Compatible with German Industrie 4.0 cloud infrastructure |
@@ -116,59 +120,139 @@ Germany's infrastructure—bridges, railways, pipelines, and industrial faciliti
 
 6. **TÜV Certification Ready**: The modular architecture supports documentation requirements for TÜV (Technical Inspection Association) certification.
 
+## Verified Model Metrics
+
+Reproduced locally on an NVIDIA RTX 3050 Ti (4 GB) with Ultralytics 8.4.
+
+| Metric | Value |
+|--------|-------|
+| Dataset | [Rust Detection v1](https://universe.roboflow.com/nishat-workspace/rust-detection-6ogya-rl87b/dataset/1) (Roboflow, CC BY 4.0) |
+| Images | 40 train / 15 valid / 15 test |
+| Base model | YOLOv8s (detection) |
+| Epochs | 40 (GPU) |
+| Precision | 1.00 |
+| Recall | 0.294 |
+| **mAP50** | **0.399** |
+| mAP50-95 | 0.259 |
+
+### Note on the metrics
+
+The dataset is deliberately small (40 training images), so recall and mAP are
+low. This is a data-volume limitation, not a pipeline defect. The reported
+precision of 1.00 with 0.294 recall means the model is conservative — it only
+flags corrosion it is confident about. Scaling to a few hundred annotated
+images is the single highest-value next step.
+
 ## Quick Start
 
-1. Clone the repository:
+### 1. Install dependencies
 
 ```bash
-git clone https://github.com/ksnishat/infralens.git
-cd infralens
+conda create -n infralens-env python=3.10 -y
+conda activate infralens-env
+pip install -r requirements.txt
+pip install mlflow numpy opencv-python-headless pillow prometheus-client
 ```
 
-2. Start services with Docker Compose (local dev):
+### 2. Train the model (GPU if available)
 
 ```bash
-docker compose up -d
+python -c "from ultralytics import YOLO; \
+m = YOLO('yolov8s.pt'); \
+m.train(data='Rust Detection.v1i.yolov8/data.yaml', epochs=40, imgsz=640, batch=8, workers=0)"
 ```
 
-3. Open the apps:
+Copy the best checkpoint into place:
 
-- Streamlit UI: http://localhost:8501
-- FastAPI docs: http://localhost:8000/docs
+```bash
+mkdir -p src/ai_models
+cp runs/detect/train/weights/best.pt src/ai_models/rust_v8s_best.pt
+```
 
-### Model Setup
+### 3. Start the API
 
-Place model weights under `src/ai_models/` if not present (`rust_v8s_best.pt`, etc.). Configure Ollama/LLM locally according to your environment before starting the agent service.
+```bash
+PYTHONPATH=src uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+### 4. Verify
+
+```bash
+curl http://localhost:8001/                         # {"status":"online","service":"InfraLens Backend"}
+curl http://localhost:8001/metrics | grep infralens # Prometheus metrics
+curl -X POST http://localhost:8001/predict \
+     -F "file=@Rust Detection.v1i.yolov8/valid/images/<image>.jpg"
+```
+
+### 5. Or launch the whole Docker stack
+
+```bash
+docker compose up -d          # ollama, api, frontend, grafana, prometheus
+```
+
+## Running Tests
+
+```bash
+PYTHONPATH=src pytest tests/ -v      # 15 passed
+```
+
+## Monitoring & Live Demo
+
+```bash
+./start_all_stacks.sh infralens      # API :8001 + Prometheus :9091 + Grafana :3002
+python3 provision_dashboards.py      # datasource + dashboard
+```
+
+| Service | URL |
+|---------|-----|
+| FastAPI (Swagger) | http://localhost:8001/docs |
+| Prometheus | http://localhost:9091 |
+| Grafana | http://localhost:3002 (`admin` / `admin`) |
+| Streamlit UI (compose) | http://localhost:8501 |
+
+### Exposed metrics
+
+| Metric | Type | Meaning |
+|--------|------|---------|
+| `infralens_requests_total` | counter | Requests, labelled by `endpoint` and `status` |
+| `infralens_detections_total` | counter | Detections returned, labelled by `class_name` |
+| `infralens_inference_latency_seconds` | histogram | YOLO inference latency |
+| `infralens_model_loaded` | gauge | 1 when the model is loaded, 0 otherwise |
+
+## Docker Compose Notes
+
+The `ollama` service previously declared `network_mode: "bridge"` alongside an
+implicit default network, which makes `docker compose up` fail with a
+"mutually exclusive network_mode and networks" error. This has been removed.
 
 ## Kubernetes Deployment
 
 ```bash
-# Install Helm chart
 helm install infralens ./helm-chart
-
-# Or deploy via kubectl
+# or
 kubectl apply -f k8s/
 ```
 
 ## Tech Stack
 
-- **AI**: YOLOv8, Ollama + Llama 3
-- **Orchestration**: LangChain (optional)
-- **Backend**: FastAPI + Uvicorn
+- **AI**: YOLOv8s detection, Ollama + Llama 3 for report generation
+- **Backend**: FastAPI + Uvicorn, SQLAlchemy + PostgreSQL, Alembic
 - **Frontend**: Streamlit
-- **DevOps**: Docker Compose, Kubernetes, Helm
-- **GPU**: NVIDIA device plugin for K8s
+- **Monitoring**: Prometheus + Grafana, structured JSON logging
+- **DevOps**: Docker Compose, Kubernetes, Helm, Terraform, DVC
+- **GPU**: NVIDIA device plugin for Kubernetes
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| **YOLO model not found** | Ensure model weights exist in `src/ai_models/` directory |
-| **Ollama connection refused** | Verify Ollama service is running on port 11434 |
-| **GPU not detected in K8s** | Install NVIDIA device plugin: `nvidia-device-plugin-daemonset` |
-| **Streamlit not loading** | Check frontend service logs: `kubectl logs -l component=frontend` |
-| **High memory usage** | Reduce YOLO input resolution or increase container memory limits |
-| **Agent report empty** | Check Ollama model is loaded: `ollama list` |
+| **YOLO model not found** | Train with the command above and copy `best.pt` to `src/ai_models/rust_v8s_best.pt`, or point `MODEL_PATH` at an existing checkpoint |
+| **`ModuleNotFoundError: mlflow / cv2 / PIL`** | These are declared in `requirements.txt`; re-run `pip install -r requirements.txt` |
+| **`docker compose up` → "mutually exclusive network_mode"** | Fixed in this commit; pull the latest `docker-compose.yml` |
+| **Ollama connection refused** | Verify Ollama is running on port 11434 |
+| **`/metrics` returns 404** | Fixed in this commit — the endpoint is registered on the app |
+| **Grafana shows "No data"** | Re-run `provision_dashboards.py` so the datasource points at the Prometheus container IP |
+| **Agent report empty** | Check the Ollama model is loaded: `ollama list` |
 
 ## Author
 

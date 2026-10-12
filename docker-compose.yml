@@ -120,6 +120,10 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      # Retention and WAL compression are CLI-only options, not
+      # config-file fields, so they are set here.
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.wal-compression'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
       interval: 30s

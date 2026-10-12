@@ -5,6 +5,7 @@ Tests for the YOLOv8 inference API, safety reporting agent, and image preprocess
 
 import pytest
 from fastapi.testclient import TestClient
+
 from src.app.main import app
 
 
@@ -38,7 +39,6 @@ requires_model = pytest.mark.skipif(
 def dummy_image(tmp_path):
     """Create a small dummy JPEG image for upload tests."""
     try:
-        import numpy as np
         from PIL import Image
         img = Image.new("RGB", (224, 224), color="gray")
         img.save(tmp_path / "dummy.jpg")
@@ -154,7 +154,6 @@ class TestPrometheusMetrics:
         assert response.content.decode("utf-8") != ""
 
     def test_metrics_increment_on_requests(self, client):
-        import time
         client.get("/")
         client.get("/")
         response = client.get("/metrics")

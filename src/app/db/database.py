@@ -1,6 +1,6 @@
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-import os
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Connection String (using the credentials from docker-compose)
 SQLALCHEMY_DATABASE_URL = "postgresql://user:password@db/infralens"

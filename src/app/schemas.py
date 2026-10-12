@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 from datetime import datetime
+
+from pydantic import BaseModel
+
 
 # 1. Base Schema (Shared properties)
 # This is the "Bun and Meat" that every burger has.
@@ -10,7 +12,7 @@ class TenantBase(BaseModel):
 # This is what the Customer sees on the menu.
 # We explicitly define this class so other files can find it!
 class TenantCreate(TenantBase):
-    pass 
+    pass
 
 # 3. Response Schema (Output)
 # This is the "Cooked Burger" with the wrapper (ID) and receipt (Date).

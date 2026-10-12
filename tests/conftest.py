@@ -1,7 +1,7 @@
 """Shared pytest fixtures for all InfraLens tests."""
 
-import os
 import tempfile
+
 import pytest
 
 

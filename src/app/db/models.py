@@ -1,7 +1,9 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from .database import Base
+
 
 class Tenant(Base):
     """Represents a Company (e.g., 'Avacon Region North')"""
@@ -24,7 +26,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
-    
+
     # Foreign Key (Links User to a specific Tenant)
     tenant_id = Column(Integer, ForeignKey("tenants.id"))
     tenant = relationship("Tenant", back_populates="users")
@@ -37,7 +39,7 @@ class Asset(Base):
     name = Column(String, index=True)
     location = Column(String)  # e.g., "GPS Coordinates"
     image_url = Column(String, nullable=True) # Where we store the uploaded photo
-    
+
     # Foreign Key (Assets belong to a Tenant too!)
     tenant_id = Column(Integer, ForeignKey("tenants.id"))
     tenant = relationship("Tenant", back_populates="assets")

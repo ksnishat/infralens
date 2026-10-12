@@ -9,10 +9,11 @@ Trains a YOLOv8 model for rust/corrosion detection with:
 """
 import os
 import sys
+from datetime import datetime
+from pathlib import Path
+
 import mlflow
 import mlflow.pytorch
-from pathlib import Path
-from datetime import datetime
 
 # Add src to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

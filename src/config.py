@@ -4,7 +4,7 @@ Pydantic settings for environment-based configuration
 """
 
 from functools import lru_cache
-from typing import List, Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -49,23 +49,23 @@ class Settings(BaseSettings):
     metrics_port: int = Field(default=9090, alias="METRICS_PORT")
 
     # Database
-    database_url: Optional[str] = Field(default=None, alias="DATABASE_URL")
+    database_url: str | None = Field(default=None, alias="DATABASE_URL")
 
     # Security
     secret_key: str = Field(default="change-me-in-production", alias="SECRET_KEY")
-    cors_origins: List[str] = Field(default=["*"], alias="CORS_ORIGINS")
+    cors_origins: list[str] = Field(default=["*"], alias="CORS_ORIGINS")
 
     # Health Check
     health_check_interval: int = Field(default=30, alias="HEALTH_CHECK_INTERVAL")
 
     # Sentry
-    sentry_dsn: Optional[str] = Field(default=None, alias="SENTRY_DSN")
+    sentry_dsn: str | None = Field(default=None, alias="SENTRY_DSN")
     sentry_environment: str = Field(default="development", alias="SENTRY_ENVIRONMENT")
     sentry_release: str = Field(default="1.0.0", alias="SENTRY_RELEASE")
     sentry_traces_sample_rate: float = Field(default=0.1, alias="SENTRY_TRACES_SAMPLE_RATE")
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()

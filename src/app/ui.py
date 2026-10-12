@@ -1,8 +1,7 @@
-import streamlit as st
+
 import requests
+import streamlit as st
 from PIL import Image
-import io
-import json
 
 # --- CONFIGURATION ---
 # We use the internal Docker DNS name "backend" to talk to the API
@@ -32,10 +31,10 @@ if uploaded_file is not None:
 
     # 2. Action Buttons
     col1, col2 = st.columns(2)
-    
+
     with col1:
         detect_btn = st.button("🔍 Detect Only (Fast)")
-    
+
     with col2:
         analyze_btn = st.button("🛡️ Full Safety Report (Slow)")
 
@@ -46,9 +45,9 @@ if uploaded_file is not None:
                 # Reset file pointer
                 uploaded_file.seek(0)
                 files = {"file": uploaded_file.getvalue()}
-                
+
                 response = requests.post(f"{API_URL}/predict", files=files)
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     st.success(f"Found {len(data['detections'])} objects!")
@@ -64,28 +63,28 @@ if uploaded_file is not None:
                 # Reset file pointer
                 uploaded_file.seek(0)
                 files = {"file": uploaded_file.getvalue()}
-                
+
                 # Call the SMART endpoint
                 response = requests.post(f"{API_URL}/analyze-report", files=files)
-                
+
                 if response.status_code == 200:
                     data = response.json()
-                    
+
                     # --- DISPLAY REPORT ---
                     st.divider()
                     st.subheader("📝 Technical Safety Report")
-                    
+
                     # Create a professional card for the report
                     with st.container(border=True):
                         st.markdown(data["safety_report"])
-                    
+
                     # Show raw detections below
                     with st.expander("View Raw Vision Data"):
                         st.json(data["detections"])
-                        
+
                 else:
                     st.error(f"Server Error: {response.text}")
-                    
+
             except Exception as e:
                 st.error(f"Connection failed: {e}")
 

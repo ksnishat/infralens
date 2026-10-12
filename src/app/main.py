@@ -1,23 +1,21 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-import cv2
-import numpy as np
 import io
 import time
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from ultralytics import YOLO
 
 # Prometheus instrumentation
 try:
-    from prometheus_client import (
-        Counter,
-        Histogram,
-        Gauge,
-        generate_latest,
-        CONTENT_TYPE_LATEST,
-    )
     from fastapi import Response
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
+    )
 
     REQUEST_COUNT = Counter(
         "infralens_requests_total",
@@ -68,7 +66,7 @@ app.add_middleware(
 # 2. Load the AI Model (The Eyes)
 # We load this once at startup to save RAM
 try:
-    model = YOLO("src/ai_models/rust_v8s_best.pt") 
+    model = YOLO("src/ai_models/rust_v8s_best.pt")
     print("✅ Custom Rust Model Loaded Successfully")
 except Exception as e:
     print(f"❌ Error loading YOLO model: {e}")
@@ -143,10 +141,10 @@ async def analyze_and_report(file: UploadFile = File(...)):
     # 1. Read Image
     contents = await file.read()
     image = Image.open(io.BytesIO(contents))
-    
+
     # 2. Run YOLO (The Eyes)
     results = model(image)
-    
+
     # 3. Format Data for the LLM
     # We strip out the heavy pixel data and just send the facts (stats) to Llama 3
     detection_summary = []
@@ -158,7 +156,7 @@ async def analyze_and_report(file: UploadFile = File(...)):
             cls_name = model.names[int(box.cls)]
             conf = float(box.conf)
             detection_summary.append(f"- Found {cls_name} with {conf:.2f} confidence.")
-            
+
             if "rust" in cls_name.lower():
                 rust_count += 1
                 if conf > highest_conf:

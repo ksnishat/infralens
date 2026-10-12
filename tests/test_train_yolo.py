@@ -1,6 +1,6 @@
 """Tests for the InfraLens YOLOv8 training module."""
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from src.scripts.train_yolo import train_yolo
 
 

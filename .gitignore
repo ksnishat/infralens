@@ -58,3 +58,7 @@ htmlcov/
 
 # --- OS ---
 Thumbs.db
+
+# --- MLflow ---
+mlruns/
+mlflow.db

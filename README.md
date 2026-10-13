@@ -204,7 +204,7 @@ are excluded from CI (which has no model checkpoint or dataset) and run against
 real services instead of an in-process `TestClient`:
 
 ```bash
-./start_all_stacks.sh infralens
+./run_stack.sh
 LIVE_STACK=1 pytest tests/test_integration_live.py -v   # 8 passed
 ```
 
@@ -215,9 +215,9 @@ reachable.
 ## Monitoring & Live Demo
 
 ```bash
-./start_all_stacks.sh infralens      # API + MLflow + MinIO + Prometheus + Grafana
-python3 provision_dashboards.py      # datasource + dashboard
-./verify_live_stack.sh infralens     # 7 checks, exit 0 when all pass
+./run_stack.sh                      # API + MLflow + MinIO + Prometheus + Grafana
+python3 provision_dashboards.py infralens   # datasource + dashboard
+./verify_stack.sh                    # 7 checks, exit 0 when all pass
 ```
 
 | Service | URL |

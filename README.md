@@ -196,14 +196,28 @@ docker compose up -d          # ollama, api, frontend, grafana, prometheus
 ## Running Tests
 
 ```bash
-PYTHONPATH=src pytest tests/ -v      # 15 passed
+PYTHONPATH=src pytest tests/ -v      # 19 passed, 8 skipped
 ```
+
+The 8 skipped tests are integration tests that need the live docker stack. They
+are excluded from CI (which has no model checkpoint or dataset) and run against
+real services instead of an in-process `TestClient`:
+
+```bash
+./start_all_stacks.sh infralens
+LIVE_STACK=1 pytest tests/test_integration_live.py -v   # 8 passed
+```
+
+They assert the API detects objects in a real image, that Prometheus is actually
+scraping the API (not merely healthy), and that MLflow, Grafana and MinIO are
+reachable.
 
 ## Monitoring & Live Demo
 
 ```bash
-./start_all_stacks.sh infralens      # API :8001 + Prometheus :9091 + Grafana :3002
+./start_all_stacks.sh infralens      # API + MLflow + MinIO + Prometheus + Grafana
 python3 provision_dashboards.py      # datasource + dashboard
+./verify_live_stack.sh infralens     # 7 checks, exit 0 when all pass
 ```
 
 | Service | URL |

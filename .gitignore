@@ -62,3 +62,6 @@ Thumbs.db
 # --- MLflow ---
 mlruns/
 mlflow.db
+
+# --- MinIO local data (created by start_all_stacks.sh) ---
+.minio-data/

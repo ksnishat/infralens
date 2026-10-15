@@ -235,6 +235,38 @@ python3 provision_dashboards.py infralens   # datasource + dashboard
 | `infralens_detections_total` | counter | Detections returned, labelled by `class_name` |
 | `infralens_inference_latency_seconds` | histogram | YOLO inference latency |
 | `infralens_model_loaded` | gauge | 1 when the model is loaded, 0 otherwise |
+| `infralens_detection_drift_psi` | gauge | PSI of the live detection distribution vs the validation baseline |
+| `infralens_drift_status` | gauge | 0 stable, 1 moderate, 2 significant, -1 unknown |
+
+### Drift detection
+
+`GET /drift` reports the Population Stability Index between the live detection
+distribution and the validation baseline. Drift for a detector is measured on
+*what the model reports* (mostly-Corrosion vs mostly-Rust), not on raw pixels,
+because a shift in the class mix is the actionable signal and it needs no labels
+to compute. One observation is recorded per image — the highest-confidence class,
+or `none` when nothing is found — so a single busy image cannot dominate the
+window.
+
+Verified discrimination: a balanced stream gives PSI 0.0006 (stable) while an
+all-Corrosion stream gives 6.91 (significant).
+
+### Scheduled retraining
+
+`dags/retraining_pipeline.py` runs weekly: retrain YOLOv8 → reload the serving
+model → report drift.
+
+```bash
+docker compose up -d airflow-postgres airflow-webserver airflow-scheduler
+docker exec infralens_airflow_scheduler airflow dags unpause infralens_continuous_learning
+docker exec infralens_airflow_scheduler airflow dags trigger infralens_continuous_learning
+```
+
+Airflow UI: http://localhost:8082 (`admin` / `admin`).
+
+The reload step calls `POST /admin/reload-model`, which is disabled unless
+`ENABLE_MODEL_RELOAD=true`. Without it a retrained model would sit on disk while
+the running process kept serving the old weights.
 
 ## Docker Compose Notes
 

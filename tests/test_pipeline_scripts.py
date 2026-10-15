@@ -71,3 +71,38 @@ class TestExtractBronze:
         )
         assert result.returncode != 0
         assert "Source directory not found" in result.stderr
+
+
+class TestMetricNameSanitization:
+    """MLflow rejects metric names containing parentheses.
+
+    YOLO reports keys such as "metrics/precision(B)", so logging them raw fails
+    the whole training task after the model has already trained.
+    """
+
+    def test_parentheses_are_removed(self):
+        from src.scripts.train_yolo import _sanitize_metric_name
+
+        assert _sanitize_metric_name("metrics/precision(B)") == "metrics/precision_B"
+        assert _sanitize_metric_name("metrics/mAP50-95(B)") == "metrics/mAP50-95_B"
+
+    def test_plain_names_are_unchanged(self):
+        from src.scripts.train_yolo import _sanitize_metric_name
+
+        assert _sanitize_metric_name("fitness") == "fitness"
+        assert _sanitize_metric_name("train/box_loss") == "train/box_loss"
+
+    def test_result_is_mlflow_safe(self):
+        import re
+
+        from src.scripts.train_yolo import _sanitize_metric_name
+
+        allowed = re.compile(r"^[A-Za-z0-9_\-. :/]+$")
+        for key in [
+            "metrics/precision(B)",
+            "metrics/recall(B)",
+            "metrics/mAP50(B)",
+            "metrics/mAP50-95(B)",
+            "val/box_loss",
+        ]:
+            assert allowed.match(_sanitize_metric_name(key)), key

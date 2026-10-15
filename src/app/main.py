@@ -1,4 +1,5 @@
 import io
+import os
 import time
 
 import numpy as np
@@ -76,15 +77,52 @@ app.add_middleware(
 
 # 2. Load the AI Model (The Eyes)
 # We load this once at startup to save RAM
-try:
-    model = YOLO("src/ai_models/rust_v8s_best.pt")
-    print("✅ Custom Rust Model Loaded Successfully")
-except Exception as e:
-    print(f"❌ Error loading YOLO model: {e}")
-    model = None
+MODEL_PATH = os.getenv("MODEL_PATH", "src/ai_models/rust_v8s_best.pt")
 
-if MODEL_LOADED is not None:
-    MODEL_LOADED.set(1 if model is not None else 0)
+
+def load_model() -> bool:
+    """Load (or reload) the YOLO detector from disk.
+
+    Returns True on success. Kept as a function so the retraining DAG can
+    hot-swap the weights over HTTP instead of requiring a container restart.
+    """
+    global model
+
+    try:
+        model = YOLO(MODEL_PATH)
+        print(f"✅ Custom Rust Model Loaded Successfully ({MODEL_PATH})")
+        if MODEL_LOADED is not None:
+            MODEL_LOADED.set(1)
+        return True
+    except Exception as e:
+        print(f"❌ Error loading YOLO model: {e}")
+        model = None
+        if MODEL_LOADED is not None:
+            MODEL_LOADED.set(0)
+        return False
+
+
+load_model()
+
+
+@app.post("/admin/reload-model")
+async def reload_model():
+    """Re-read the detector weights from disk without restarting the API.
+
+    The retraining DAG writes new weights, then calls this so the fresh model is
+    served immediately. Disabled unless ENABLE_MODEL_RELOAD=true: swapping model
+    weights is a privileged operation and should not be reachable by default.
+    """
+    if os.getenv("ENABLE_MODEL_RELOAD", "false").lower() not in {"1", "true", "yes"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Model reload is disabled. Set ENABLE_MODEL_RELOAD=true to enable it.",
+        )
+
+    if not load_model():
+        raise HTTPException(status_code=500, detail="Reload failed: model could not be loaded")
+
+    return {"status": "reloaded", "model_path": MODEL_PATH}
 
 
 @app.get("/metrics")

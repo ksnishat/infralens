@@ -19,6 +19,16 @@ import mlflow.pytorch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def _sanitize_metric_name(name: str) -> str:
+    """Make a YOLO metric key acceptable to MLflow.
+
+    YOLO reports keys such as ``metrics/precision(B)``. MLflow rejects
+    parentheses, so they are replaced with underscores. The mapping is
+    deterministic, so the same metric always lands under the same name.
+    """
+    return name.replace("(", "_").replace(")", "")
+
+
 def train_yolo(
     data_yaml: str = "data/gold/yolo_dataset.yaml",
     epochs: int = 100,
@@ -78,7 +88,10 @@ def train_yolo(
             metrics = results.results_dict
             for key, value in metrics.items():
                 if isinstance(value, (int, float)):
-                    mlflow.log_metric(key, value)
+                    # YOLO's keys contain parentheses, e.g. "metrics/precision(B)".
+                    # MLflow rejects those: names may only contain alphanumerics,
+                    # underscores, dashes, periods, spaces, colons and slashes.
+                    mlflow.log_metric(_sanitize_metric_name(key), value)
 
         # 6. Log model
         best_model_path = Path(f"runs/train/{run_name}/weights/best.pt")

@@ -1,0 +1,51 @@
+# FILE: infrastructure/docker/Dockerfile.airflow
+#
+# Airflow image for the InfraLens retraining DAG.
+#
+# The DAG imports the project's training module, so every dependency that module
+# needs must be present here. A missing dependency makes the DAG fail to parse
+# and it silently disappears from the Airflow UI rather than reporting an error,
+# which is why the DAG imports them lazily inside the task callables.
+FROM apache/airflow:2.7.1
+
+USER root
+# The apache/airflow:2.7.1 base image ships an apt source for
+# apt.postgresql.org that no longer publishes a Release file for bullseye, so a
+# plain `apt-get update` fails with exit code 100. Drop that source first.
+#
+# libgl1/libglib2.0-0 are needed by ultralytics (OpenCV). The bullseye-security
+# repo no longer serves the versions the base image pins, so the security source
+# is dropped too and the packages come from the main bullseye repo, which still
+# has them.
+RUN rm -f /etc/apt/sources.list.d/pgdg.list && \
+    sed -i '/bullseye-security/d' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends gcc libgl1 libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
+
+USER airflow
+
+# CPU-only torch: the DAG retrains on CPU so it does not contend with the
+# serving container for the GPU. --extra-index-url rather than --index-url,
+# because --index-url replaces PyPI entirely and transitive dependencies such as
+# typing-extensions then cannot be resolved.
+RUN pip install --no-cache-dir \
+    torch \
+    torchvision \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --no-cache-dir \
+    ultralytics \
+    mlflow \
+    boto3 \
+    requests \
+    pandas \
+    scikit-learn \
+    pyyaml
+
+# Training exports the retrained weights here. Docker initialises a fresh named
+# volume from the image's directory contents and ownership, so creating it as
+# the airflow user means the volume is writable without a manual chown.
+USER root
+RUN mkdir -p /opt/airflow/models && chown airflow:root /opt/airflow/models
+USER airflow

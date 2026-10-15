@@ -155,6 +155,112 @@ services:
     networks:
       - infralens-network
 
+  # ==========================================
+  # 5. ORCHESTRATION (Airflow)
+  # ==========================================
+  # Postgres is Airflow's metadata database. It is separate from any
+  # application database: Airflow needs its own schema and migrations.
+  airflow-postgres:
+    image: postgres:15
+    container_name: infralens_airflow_postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - infralens-network
+
+  airflow-webserver:
+    image: infralens-airflow:latest
+    container_name: infralens_airflow_webserver
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.airflow
+    restart: unless-stopped
+    environment:
+      # LocalExecutor cannot use SQLite, so Postgres is required.
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      # MLflow runs on the host (port 5002), not as a compose service, so the
+      # container reaches it through the Docker gateway rather than by name.
+      - MLFLOW_TRACKING_URI=http://host.docker.internal:5002
+      - INFRALENS_SRC=/opt/airflow/src
+      - INFRALENS_MODEL_DIR=/opt/airflow/models
+      - INFRALENS_DATA_YAML=/opt/airflow/dataset/data.yaml
+    volumes:
+      - ./dags:/opt/airflow/dags
+      # Mount src OUTSIDE the dags directory. Airflow scans everything under
+      # /opt/airflow/dags for DAG files, so mounting src there makes it try to
+      # parse every project module as a DAG and report import errors.
+      - ./src:/opt/airflow/src
+      # The dataset yaml references ../train/images etc., so the whole
+      # dataset directory must be mounted at its original relative location.
+      - ./Rust Detection.v1i.yolov8:/opt/airflow/dataset
+      # Named volume, not a bind mount: a host ./logs directory owned by root is
+      # not writable by the airflow user and Airflow fails to start.
+      - airflow_logs:/opt/airflow/logs
+      # Training exports the retrained weights here. ./src is a read-only bind
+      # mount, so the exports need their own writable volume.
+      - airflow_models:/opt/airflow/models
+    ports:
+      - "8082:8080"
+    command: webserver
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - infralens-network
+
+  airflow-scheduler:
+    image: infralens-airflow:latest
+    container_name: infralens_airflow_scheduler
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.airflow
+    restart: unless-stopped
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - MLFLOW_TRACKING_URI=http://host.docker.internal:5002
+      - INFRALENS_SRC=/opt/airflow/src
+      - INFRALENS_MODEL_DIR=/opt/airflow/models
+      - INFRALENS_DATA_YAML=/opt/airflow/dataset/data.yaml
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      # The dataset yaml references ../train/images etc., so the whole
+      # dataset directory must be mounted at its original relative location.
+      - ./Rust Detection.v1i.yolov8:/opt/airflow/dataset
+      - airflow_logs:/opt/airflow/logs
+      - airflow_models:/opt/airflow/models
+    command: scheduler
+    depends_on:
+      - airflow-webserver
+    networks:
+      - infralens-network
+
 networks:
   infralens-network:
     driver: bridge
@@ -164,3 +270,6 @@ volumes:
   infralens_models:
   prometheus_data:
   grafana_data:
+  airflow_postgres_data:
+  airflow_logs:
+  airflow_models:

@@ -1,6 +1,7 @@
 import io
 import time
 
+import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
@@ -36,8 +37,18 @@ try:
         "infralens_model_loaded",
         "1 if the rust detection model is loaded, 0 otherwise",
     )
+    DRIFT_PSI = Gauge(
+        "infralens_detection_drift_psi",
+        "Population Stability Index of the live detection distribution vs the "
+        "validation baseline",
+    )
+    DRIFT_STATUS = Gauge(
+        "infralens_drift_status",
+        "Drift interpretation: 0=stable, 1=moderate, 2=significant, -1=unknown",
+    )
 except ImportError:  # pragma: no cover
     REQUEST_COUNT = DETECTION_COUNT = INFERENCE_LATENCY = MODEL_LOADED = None
+    DRIFT_PSI = DRIFT_STATUS = None
     generate_latest = CONTENT_TYPE_LATEST = Response = None
 
 # Import our new AI Agent (The Brain)
@@ -126,7 +137,136 @@ async def predict_rust(file: UploadFile = File(...)):
         for det in detections:
             DETECTION_COUNT.labels(class_name=det["class"]).inc()
 
-    return {"filename": file.filename, "detections": detections}
+    # 5. Drift: track the detection distribution against the validation baseline
+    drift = observe_detection_drift(detections)
+
+    return {"filename": file.filename, "detections": detections, "drift": drift}
+
+
+# --- Detection-distribution drift -------------------------------------------
+
+# Baseline detection distribution measured on the validation split. Overridable
+# so a retrained model can ship its own baseline without a code change.
+_DEFAULT_BASELINE = {"Corrosion": 0.5, "Rust": 0.5}
+_drift_baseline: dict = dict(_DEFAULT_BASELINE)
+_detection_window: list = []
+_DRIFT_WINDOW = 100
+
+
+def set_drift_baseline(distribution: dict) -> None:
+    """Set the reference detection distribution used for PSI."""
+    global _drift_baseline
+
+    total = sum(distribution.values())
+    if total <= 0:
+        return
+    _drift_baseline = {k: v / total for k, v in distribution.items()}
+
+
+def get_drift_baseline() -> dict:
+    """Return the current reference distribution."""
+    return dict(_drift_baseline)
+
+
+def _drift_samples(n: int = 1000):
+    """Expand the baseline and live class proportions into weighted samples.
+
+    PSI is defined on a distribution, so each class proportion is expanded into
+    a weighted sample of class indices. This keeps the standard PSI formula
+    while comparing categorical distributions.
+
+    Returns:
+        (baseline_sample, live_sample, labels)
+    """
+    labels = sorted(set(_detection_window) | set(_drift_baseline))
+    if not labels:
+        return np.array([]), np.array([]), labels
+
+    baseline_props = np.array([_drift_baseline.get(c, 0.0) for c in labels], dtype=float)
+    live_counts = np.array([_detection_window.count(c) for c in labels], dtype=float)
+    total = live_counts.sum()
+    live_props = live_counts / total if total > 0 else np.zeros_like(live_counts)
+
+    baseline_sample = np.repeat(np.arange(len(labels)), np.round(baseline_props * n).astype(int))
+    live_sample = np.repeat(np.arange(len(labels)), np.round(live_props * n).astype(int))
+    return baseline_sample, live_sample, labels
+
+
+def observe_detection_drift(detections: list, min_samples: int = 30) -> dict:
+    """Record one image's detections and recompute PSI.
+
+    Drift for a detector is measured on the *class distribution of detections*,
+    not on raw pixels: a shift from mostly-Corrosion to mostly-Rust is the
+    actionable signal, and it needs no labels to compute.
+
+    Never raises: drift reporting must not break a prediction.
+    """
+    global _detection_window
+
+    try:
+        from src.utils.drift import classify_psi, compute_psi
+
+        # One observation per image: the dominant class, or "none" when the
+        # model finds nothing. Counting every box would let one busy image
+        # dominate the window.
+        if detections:
+            dominant = max(detections, key=lambda d: d["confidence"])["class"]
+        else:
+            dominant = "none"
+
+        _detection_window.append(dominant)
+        if len(_detection_window) > _DRIFT_WINDOW:
+            del _detection_window[0]
+
+        if len(_detection_window) < min_samples:
+            if DRIFT_STATUS is not None:
+                DRIFT_STATUS.set(-1)
+            return {"enabled": True, "status": "insufficient_data",
+                    "samples": len(_detection_window)}
+
+        baseline_sample, live_sample, labels = _drift_samples()
+        if baseline_sample.size == 0 or live_sample.size == 0:
+            return {"enabled": True, "status": "insufficient_data"}
+
+        psi = compute_psi(baseline_sample, live_sample, bins=max(2, len(labels)))
+        status = classify_psi(psi)
+
+        if DRIFT_PSI is not None:
+            DRIFT_PSI.set(psi)
+            DRIFT_STATUS.set({"stable": 0, "moderate": 1, "significant": 2}.get(status, -1))
+
+        return {"enabled": True, "status": status, "psi": round(psi, 6),
+                "samples": len(_detection_window)}
+    except Exception as exc:  # noqa: BLE001 - drift must never break /predict
+        return {"enabled": True, "error": str(exc)}
+
+
+@app.get("/drift")
+def drift_report():
+    """Detection-distribution drift against the validation baseline."""
+    from src.utils.drift import classify_psi, compute_psi
+
+    if len(_detection_window) < 30:
+        return {
+            "enabled": True,
+            "status": "insufficient_data",
+            "samples": len(_detection_window),
+            "baseline": get_drift_baseline(),
+        }
+
+    baseline_sample, live_sample, labels = _drift_samples()
+    live_counts = {c: _detection_window.count(c) for c in labels}
+    total = sum(live_counts.values())
+    psi = compute_psi(baseline_sample, live_sample, bins=max(2, len(labels)))
+
+    return {
+        "enabled": True,
+        "status": classify_psi(psi),
+        "psi": round(psi, 6),
+        "samples": len(_detection_window),
+        "observed": {c: live_counts[c] / total for c in labels},
+        "baseline": get_drift_baseline(),
+    }
 
 @app.post("/analyze-report")
 async def analyze_and_report(file: UploadFile = File(...)):

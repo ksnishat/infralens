@@ -106,3 +106,63 @@ class TestMetricNameSanitization:
             "val/box_loss",
         ]:
             assert allowed.match(_sanitize_metric_name(key)), key
+
+
+class TestTrainingCli:
+    """The training script must be runnable without arguments.
+
+    train_yolo() previously defaulted data_yaml to "data/gold/yolo_dataset.yaml"
+    and __main__ called train_yolo() with no arguments, so
+    `python src/scripts/train_yolo.py` failed on any host checkout. There were
+    no flags to override it either.
+    """
+
+    def test_default_data_yaml_resolves_on_a_host_checkout(self):
+        from src.scripts.train_yolo import _default_data_yaml
+
+        path = _default_data_yaml()
+        assert os.path.exists(path), f"resolved to a missing path: {path}"
+        assert path.endswith("data.yaml")
+
+    def test_default_data_yaml_prefers_the_env_override(self, tmp_path, monkeypatch):
+        from src.scripts.train_yolo import _default_data_yaml
+
+        fake = tmp_path / "data.yaml"
+        fake.write_text("nc: 1\n")
+        monkeypatch.setenv("INFRALENS_DATA_YAML", str(fake))
+        assert _default_data_yaml() == str(fake)
+
+    def test_train_yolo_resolves_the_path_instead_of_hardcoding_it(self):
+        """The default must be None so resolution happens at call time."""
+        import inspect
+
+        from src.scripts.train_yolo import train_yolo
+
+        default = inspect.signature(train_yolo).parameters["data_yaml"].default
+        assert default is None, (
+            f"data_yaml defaults to {default!r}; it must be None so "
+            "_default_data_yaml() is consulted"
+        )
+
+    def test_cli_exposes_every_train_parameter(self):
+        """A parameter with no flag can only be changed by editing the source."""
+        import inspect
+        import subprocess
+        import sys
+
+        from src.scripts.train_yolo import train_yolo
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        result = subprocess.run(
+            [sys.executable, "src/scripts/train_yolo.py", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=root,
+        )
+        assert result.returncode == 0, result.stderr
+        help_text = result.stdout
+
+        params = set(inspect.signature(train_yolo).parameters)
+        expected = {p.replace("_", "-") for p in params}
+        missing = {p for p in expected if f"--{p}" not in help_text}
+        assert not missing, f"train_yolo() parameters with no CLI flag: {sorted(missing)}"

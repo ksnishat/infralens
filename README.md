@@ -157,10 +157,21 @@ pip install mlflow numpy opencv-python-headless pillow prometheus-client
 ### 2. Train the model (GPU if available)
 
 ```bash
-python -c "from ultralytics import YOLO; \
-m = YOLO('yolov8s.pt'); \
-m.train(data='Rust Detection.v1i.yolov8/data.yaml', epochs=40, imgsz=640, batch=8, workers=0)"
+python src/scripts/train_yolo.py --epochs 40 --batch-size 8
 ```
+
+The dataset YAML is resolved automatically (container mount, then the in-repo
+`Rust Detection.v1i.yolov8/`), so no arguments are needed on a host checkout.
+Runs are logged to MLflow under the `infralens_rust_detection` experiment.
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--data-yaml` | auto | YOLO dataset YAML |
+| `--epochs` | 100 | Training epochs |
+| `--batch-size` | 16 | Training batch size |
+| `--imgsz` | 640 | Input image size |
+| `--project-name` | `infralens_rust_detection` | MLflow experiment name |
+| `--run-name` | auto | Optional run name |
 
 Copy the best checkpoint into place:
 

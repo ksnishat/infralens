@@ -29,24 +29,49 @@ def _sanitize_metric_name(name: str) -> str:
     return name.replace("(", "_").replace(")", "")
 
 
+def _default_data_yaml() -> str:
+    """Locate the YOLO dataset YAML.
+
+    Prefers the container mount, then falls back to the in-repo Roboflow export
+    so ``python src/scripts/train_yolo.py`` works on a host checkout without
+    arguments. The export's YAML references ``../train/images``, so it must be
+    read from its own directory rather than copied elsewhere.
+    """
+    candidates = [
+        os.getenv("INFRALENS_DATA_YAML", ""),
+        "/opt/airflow/dataset/data.yaml",
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "Rust Detection.v1i.yolov8",
+            "data.yaml",
+        ),
+    ]
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return "data/gold/yolo_dataset.yaml"
+
+
 def train_yolo(
-    data_yaml: str = "data/gold/yolo_dataset.yaml",
+    data_yaml: str | None = None,
     epochs: int = 100,
     batch_size: int = 16,
     imgsz: int = 640,
     project_name: str = "infralens_rust_detection",
-    run_name: str = None,
+    run_name: str | None = None,
 ):
     """Train YOLOv8 model with MLflow tracking.
 
     Args:
-        data_yaml: Path to YOLO dataset YAML file
+        data_yaml: Path to YOLO dataset YAML file. Defaults to the container
+            mount, then the in-repo Roboflow export.
         epochs: Number of training epochs
         batch_size: Training batch size
         imgsz: Image size for training
         project_name: MLflow experiment name
         run_name: Optional run name
     """
+    data_yaml = data_yaml or _default_data_yaml()
     from ultralytics import YOLO
 
     # 1. Setup MLflow
@@ -123,4 +148,29 @@ def train_yolo(
 
 
 if __name__ == "__main__":
-    train_yolo()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Train the InfraLens YOLOv8 rust detector."
+    )
+    parser.add_argument(
+        "--data-yaml",
+        default=None,
+        help="YOLO dataset YAML. Defaults to the container mount, then the "
+        "in-repo Roboflow export.",
+    )
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--project-name", default="infralens_rust_detection")
+    parser.add_argument("--run-name", default=None)
+    args = parser.parse_args()
+
+    train_yolo(
+        data_yaml=args.data_yaml,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        imgsz=args.imgsz,
+        project_name=args.project_name,
+        run_name=args.run_name,
+    )

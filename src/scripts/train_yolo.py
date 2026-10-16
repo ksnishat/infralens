@@ -31,6 +31,38 @@ def _sanitize_metric_name(name: str) -> str:
     return name.replace("(", "_").replace(")", "")
 
 
+def _resolve_best_weights(results, run_name: str) -> Optional[Path]:
+    """Find the checkpoint Ultralytics actually wrote.
+
+    Ultralytics resolves ``project`` relative to its own settings directory and
+    prepends ``runs/detect/``, so passing ``project="runs/train"`` writes to
+    ``runs/detect/runs/train/<name>/weights/best.pt``. Hardcoding the input path
+    meant the caller's existence check silently failed and the model was never
+    logged or published, while the task still reported success.
+
+    The trainer's own ``save_dir`` is authoritative, so it is tried first. The
+    glob is a fallback for Ultralytics versions that do not expose it.
+    """
+    candidates = []
+
+    save_dir = getattr(results, "save_dir", None)
+    if save_dir:
+        candidates.append(Path(str(save_dir)) / "weights" / "best.pt")
+
+    candidates.append(Path("runs/train") / run_name / "weights" / "best.pt")
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    # Last resort: search for the run by name. Bounded to the runs tree so this
+    # cannot walk the whole filesystem.
+    for match in Path("runs").glob(f"**/{run_name}/weights/best.pt"):
+        return match
+
+    return None
+
+
 def _default_data_yaml() -> str:
     """Locate the YOLO dataset YAML.
 
@@ -121,21 +153,39 @@ def train_yolo(
                     mlflow.log_metric(_sanitize_metric_name(key), value)
 
         # 6. Log model
-        best_model_path = Path(f"runs/train/{run_name}/weights/best.pt")
-        if best_model_path.exists():
-            mlflow.pytorch.log_model(
-                pytorch_model=model,
-                artifact_path="model",
-                conda_env={
-                    "channels": ["conda-forge"],
-                    "dependencies": [
-                        "python=3.10",
-                        "pip",
-                        {"pip": ["ultralytics>=8.0.0", "torch>=2.0.0"]},
-                    ],
-                },
+        #
+        # Ultralytics resolves `project` relative to its own settings directory
+        # and prepends `runs/detect/`, so the checkpoint lands at
+        # runs/detect/runs/train/<name>/weights/best.pt — not the path passed in.
+        # Hardcoding the input path meant this block silently never ran: the
+        # model was never logged to MLflow and never published to the serving
+        # path, while the task still reported success. Ask the trainer where it
+        # actually wrote instead of guessing.
+        best_model_path = _resolve_best_weights(results, run_name)
+        if best_model_path is None:
+            raise FileNotFoundError(
+                f"Training finished but no best.pt was found for run {run_name!r}. "
+                f"Checked the trainer's save_dir and runs/**/{run_name}/weights/."
             )
-            mlflow.log_artifact(str(best_model_path), artifact_path="model_weights")
+
+        if best_model_path.exists():
+            # Log the checkpoint as an artifact rather than via
+            # mlflow.pytorch.log_model. The in-memory YOLO object holds a
+            # _SingleProcessDataLoaderIter, which cannot be pickled, so
+            # log_model fails with "('{} cannot be pickled',
+            # '_SingleProcessDataLoaderIter')" and takes the whole task down.
+            # The file on disk is the artifact that matters, and it is what the
+            # serving path needs.
+            #
+            # Best-effort: MLflow's artifact root is a host path (run_stack.sh
+            # passes --default-artifact-root "$DIR/mlruns"), which a container
+            # cannot write. Losing the uploaded copy must not fail an otherwise
+            # successful training run — the checkpoint is published to the
+            # serving path below regardless.
+            try:
+                mlflow.log_artifact(str(best_model_path), artifact_path="model_weights")
+            except Exception as e:  # noqa: BLE001 - artifacts are optional
+                print(f"WARNING: could not log weights to MLflow: {e}")
 
             # 7. Publish to the serving path.
             #
@@ -153,11 +203,17 @@ def train_yolo(
             except Exception as e:  # noqa: BLE001 - must not fail a good run
                 print(f"WARNING: could not publish weights to {serving_path}: {e}")
 
-        # 8. Log training plots
+        # 8. Log training plots. These live next to the weights, so derive the
+        # directory from the resolved checkpoint rather than guessing again.
+        # Best-effort for the same reason as the weights above.
+        run_dir = best_model_path.parent.parent
         for plot_name in ["results.png", "confusion_matrix.png"]:
-            plot_path = Path(f"runs/train/{run_name}/{plot_name}")
+            plot_path = run_dir / plot_name
             if plot_path.exists():
-                mlflow.log_artifact(str(plot_path))
+                try:
+                    mlflow.log_artifact(str(plot_path))
+                except Exception as e:  # noqa: BLE001 - artifacts are optional
+                    print(f"WARNING: could not log {plot_name} to MLflow: {e}")
 
         print(f"Training complete! Run: {run_name}")
         print(f"Best model: {best_model_path}")

@@ -29,7 +29,7 @@ class TestTrainYolo:
         assert sig.parameters["project_name"].default == "infralens_rust_detection"
 
     @patch("src.scripts.train_yolo.mlflow")
-    def test_train_calls_mlflow(self, mock_mlflow):
+    def test_train_calls_mlflow(self, mock_mlflow, tmp_path, monkeypatch):
         """Training should log to MLflow."""
         # Mock YOLO import inside the function
         import sys
@@ -37,21 +37,33 @@ class TestTrainYolo:
         mock_model = MagicMock()
         mock_yolo.return_value = mock_model
 
-        # Mock results with a real dict
+        # A real checkpoint on disk: the function now resolves the trainer's
+        # save_dir and raises if no best.pt exists, because silently skipping
+        # the log/publish step is exactly the bug this guards against.
+        run_name = "mlflow_test"
+        save_dir = tmp_path / "runs" / "detect" / "runs" / "train" / run_name
+        (save_dir / "weights").mkdir(parents=True)
+        (save_dir / "weights" / "best.pt").write_bytes(b"fake")
+
         mock_results = MagicMock()
         mock_results.results_dict = {"metrics/mAP50": 0.85, "metrics/precision": 0.90}
+        mock_results.save_dir = str(save_dir)
         mock_model.train.return_value = mock_results
 
+        monkeypatch.setenv("MODEL_PATH", str(tmp_path / "serving" / "best.pt"))
+
         with patch.dict(sys.modules, {"ultralytics": MagicMock(YOLO=mock_yolo)}):
-            train_yolo(epochs=1, batch_size=8)
+            train_yolo(epochs=1, batch_size=8, run_name=run_name)
 
         # Verify MLflow was called
         assert mock_mlflow.set_tracking_uri.called
         assert mock_mlflow.set_experiment.called
         assert mock_mlflow.start_run.called
         assert mock_mlflow.log_params.called
-        # log_metrics may or may not be called depending on results_dict
-        # The key is that the training function runs without error
+        # The checkpoint must actually be logged, not silently skipped.
+        # log_artifact is used rather than mlflow.pytorch.log_model because the
+        # in-memory YOLO object holds an unpicklable DataLoader iterator.
+        assert mock_mlflow.log_artifact.called
 
 
 class TestServingPublish:
@@ -96,3 +108,49 @@ class TestServingPublish:
             import shutil
 
             shutil.rmtree(Path("runs/train") / run_name, ignore_errors=True)
+
+
+class TestBestWeightsResolution:
+    """The checkpoint path must come from the trainer, not from a guess.
+
+    Ultralytics resolves `project` relative to its own settings directory and
+    prepends `runs/detect/`, so passing project="runs/train" writes to
+    runs/detect/runs/train/<name>/weights/best.pt. Hardcoding the input path made
+    the existence check fail silently: the model was never logged to MLflow and
+    never published to the serving path, while the task still reported success.
+    """
+
+    def test_prefers_the_trainers_save_dir(self, tmp_path):
+        from src.scripts.train_yolo import _resolve_best_weights
+
+        save_dir = tmp_path / "runs" / "detect" / "runs" / "train" / "exp"
+        (save_dir / "weights").mkdir(parents=True)
+        (save_dir / "weights" / "best.pt").write_bytes(b"x")
+
+        results = MagicMock()
+        results.save_dir = str(save_dir)
+
+        assert _resolve_best_weights(results, "exp") == save_dir / "weights" / "best.pt"
+
+    def test_returns_none_when_nothing_exists(self, tmp_path, monkeypatch):
+        from src.scripts.train_yolo import _resolve_best_weights
+
+        monkeypatch.chdir(tmp_path)
+        results = MagicMock()
+        results.save_dir = str(tmp_path / "nowhere")
+
+        assert _resolve_best_weights(results, "missing_run") is None
+
+    def test_falls_back_to_a_glob_when_save_dir_is_absent(self, tmp_path, monkeypatch):
+        from src.scripts.train_yolo import _resolve_best_weights
+
+        monkeypatch.chdir(tmp_path)
+        nested = tmp_path / "runs" / "detect" / "runs" / "train" / "exp" / "weights"
+        nested.mkdir(parents=True)
+        (nested / "best.pt").write_bytes(b"x")
+
+        results = MagicMock(spec=[])  # no save_dir attribute at all
+
+        resolved = _resolve_best_weights(results, "exp")
+        assert resolved is not None
+        assert resolved.resolve() == (nested / "best.pt").resolve()

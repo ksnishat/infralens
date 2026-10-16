@@ -257,6 +257,10 @@ services:
       - INFRALENS_SRC=/opt/airflow/src
       - INFRALENS_MODEL_DIR=/opt/airflow/models
       - INFRALENS_DATA_YAML=/opt/airflow/dataset/data.yaml
+      # The retraining DAG calls /admin/reload-model and /monitoring, both of
+      # which enforce X-API-Key. Without this the DAG got a 401 and failed.
+      # Must match the API_KEY the serving API was started with.
+      - API_KEY=${API_KEY:-demo-secret-key}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src

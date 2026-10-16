@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXTRACT = REPO_ROOT / "src" / "scripts" / "extract_bronze.py"
 
@@ -118,11 +120,34 @@ class TestTrainingCli:
     """
 
     def test_default_data_yaml_resolves_on_a_host_checkout(self):
+        """Resolution must find the in-repo export when it is present.
+
+        Skipped in CI, which has no dataset: the point of this test is that the
+        fallback works on a checkout, not that the data is always available.
+        """
         from src.scripts.train_yolo import _default_data_yaml
 
         path = _default_data_yaml()
-        assert os.path.exists(path), f"resolved to a missing path: {path}"
+        if not os.path.exists(path):
+            pytest.skip(f"dataset not present at {path} (expected in CI)")
         assert path.endswith("data.yaml")
+
+    def test_default_data_yaml_falls_back_to_the_repo_export(self, monkeypatch):
+        """With no env override and no container mount, the repo copy is used."""
+        from src.scripts import train_yolo
+
+        monkeypatch.delenv("INFRALENS_DATA_YAML", raising=False)
+
+        # Only the repo candidate "exists"; the container mount does not. The
+        # real filesystem is not consulted, so this holds in CI too.
+        monkeypatch.setattr(
+            train_yolo.os.path,
+            "exists",
+            lambda p: "Rust Detection" in str(p),
+        )
+
+        path = train_yolo._default_data_yaml()
+        assert "Rust Detection" in path, f"did not fall back to the repo export: {path}"
 
     def test_default_data_yaml_prefers_the_env_override(self, tmp_path, monkeypatch):
         from src.scripts.train_yolo import _default_data_yaml

@@ -31,9 +31,24 @@ def _require_live() -> None:
         pytest.skip("set LIVE_STACK=1 to run integration tests against the live stack")
 
 
+# The APIs enforce X-API-Key when API_KEY is set. The live stack runs with auth
+# enabled, so every request must carry the key. Set LIVE_API_KEY to match the
+# stack; the default matches run_stack.sh's demo value.
+API_KEY = os.getenv("LIVE_API_KEY", "demo-secret-key")
+AUTH_HEADERS = {"X-API-Key": API_KEY}
+
+
+def _auth(kw):
+    """Merge the API key into a request's headers."""
+    headers = dict(kw.pop("headers", {}) or {})
+    headers.update(AUTH_HEADERS)
+    kw["headers"] = headers
+    return kw
+
+
 def _get(url: str, **kw):
     try:
-        return requests.get(url, timeout=TIMEOUT, **kw)
+        return requests.get(url, timeout=TIMEOUT, **_auth(kw))
     except requests.RequestException as exc:  # pragma: no cover - environment dependent
         pytest.skip(f"service unreachable: {exc}")
 
@@ -70,10 +85,9 @@ def test_predict_detects_on_a_real_image():
     _require_live()
     path = _sample_image()
     with open(path, "rb") as fh:
-        r = requests.post(
-            f"{API}/predict",
-            files={"file": (os.path.basename(path), fh, "image/jpeg")},
+        r = requests.post(f"{API}/predict", files={"file": (os.path.basename(path), fh, "image/jpeg")},
             timeout=TIMEOUT,
+            headers=AUTH_HEADERS,
         )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -85,10 +99,9 @@ def test_predict_detects_on_a_real_image():
 
 def test_predict_rejects_a_non_image():
     _require_live()
-    r = requests.post(
-        f"{API}/predict",
-        files={"file": ("not_an_image.txt", b"this is not an image", "text/plain")},
+    r = requests.post(f"{API}/predict", files={"file": ("not_an_image.txt", b"this is not an image", "text/plain")},
         timeout=TIMEOUT,
+        headers=AUTH_HEADERS,
     )
     assert r.status_code >= 400, r.text
 

@@ -30,7 +30,7 @@ GRAFANA_PORT=3002
 PROJECT="infralens"
 ENV_NAME="infralens-env"
 API_IMPORT="from app.main import app"
-MODEL_ENV=""
+MODEL_ENV="ENABLE_MODEL_RELOAD=true"
 
 log()  { printf '\033[1;34m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
 ok()   { printf '  \033[0;32m\u2713\033[0m %s\n' "$*"; }

@@ -1,12 +1,20 @@
 import io
 import os
+import sys
 import time
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from ultralytics import YOLO
+
+# src/ must be on the path before the project modules below are imported. This
+# runs at import time, so it cannot be moved into a function.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from auth import auth_enabled, require_api_key  # noqa: E402
+from uploads import enforce_content_length, read_upload  # noqa: E402
 
 # Prometheus instrumentation
 try:
@@ -105,7 +113,7 @@ def load_model() -> bool:
 load_model()
 
 
-@app.post("/admin/reload-model")
+@app.post("/admin/reload-model", dependencies=[Depends(require_api_key)])
 async def reload_model():
     """Re-read the detector weights from disk without restarting the API.
 
@@ -135,9 +143,9 @@ async def metrics():
 @app.get("/")
 async def health_check():
     """Heartbeat endpoint to check if the API is running."""
-    return {"status": "online", "service": "InfraLens Backend"}
+    return {"status": "online", "service": "InfraLens Backend", "auth_enabled": auth_enabled()}
 
-@app.post("/predict")
+@app.post("/predict", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
 async def predict_rust(file: UploadFile = File(...)):
     """
     Standard Detection Endpoint.
@@ -149,7 +157,7 @@ async def predict_rust(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     # 1. Read Image
-    contents = await file.read()
+    contents = await read_upload(file)
     image = Image.open(io.BytesIO(contents))
 
     # 2. Run Inference
@@ -279,7 +287,7 @@ def observe_detection_drift(detections: list, min_samples: int = 30) -> dict:
         return {"enabled": True, "error": str(exc)}
 
 
-@app.get("/drift")
+@app.get("/drift", dependencies=[Depends(require_api_key)])
 def drift_report():
     """Detection-distribution drift against the validation baseline."""
     from src.utils.drift import classify_psi, compute_psi
@@ -306,7 +314,7 @@ def drift_report():
         "baseline": get_drift_baseline(),
     }
 
-@app.post("/analyze-report")
+@app.post("/analyze-report", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
 async def analyze_and_report(file: UploadFile = File(...)):
     """
     🚀 SMART ENDPOINT: Vision + Language
@@ -317,7 +325,7 @@ async def analyze_and_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     # 1. Read Image
-    contents = await file.read()
+    contents = await read_upload(file)
     image = Image.open(io.BytesIO(contents))
 
     # 2. Run YOLO (The Eyes)

@@ -17,7 +17,6 @@ spec:
         app: {{ include "infralens.fullname" . }}
         component: backend
     spec:
-      {{- with .Values.resources.limits }}
       containers:
         - name: backend
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -41,7 +40,10 @@ spec:
             limits:
               cpu: {{ .Values.resources.limits.cpu }}
               memory: {{ .Values.resources.limits.memory }}
-              nvidia.com/gpu: {{ .Values.resources.limits.nvidia.com/gpu }}
+              # `index` is required because the key contains dots. Writing
+              # `.Values.resources.limits.nvidia.com/gpu` makes Helm treat
+              # nvidia/com/gpu as nested keys and the template fails to parse.
+              nvidia.com/gpu: {{ index .Values.resources.limits "nvidia.com/gpu" }}
           livenessProbe:
             httpGet:
               path: /
@@ -61,4 +63,3 @@ spec:
         - name: model-storage
           persistentVolumeClaim:
             claimName: {{ include "infralens.fullname" . }}-models-pvc
-      {{- end }}

@@ -43,52 +43,28 @@
 ## Architecture
 
 ```mermaid
-graph TD
-    %% Input
-    subgraph Input[Input Layer]
-        Image[Infra Image Upload<br/>JPG/PNG/TIFF]
-    end
-    
-    %% Detection
-    subgraph Detection[Detection Pipeline]
-        YOLO[YOLOv8 Inference<br/>Ultralytics] -->|Bounding Boxes| Analysis[Analysis Engine<br/>Severity Assessment]
-        Image --> YOLO
-    end
-    
-    %% AI Agent
-    subgraph Agent[GenAI Agent Layer]
-        Ollama[Local LLM via Ollama<br/>Report Generation] -->|Input: Detection Metrics| Report[Technical Report<br/>German/English]
-        Analysis --> Ollama
-    end
-    
-    %% Outputs
-    subgraph Output[Output Layer]
-        UI[Streamlit Dashboard<br/>Visual Results]
-        PDF[PDF Report<br/>Downloadable]
-        API[FastAPI Endpoints<br/>Integration API]
-    end
-    
-    %% Deployment
-    subgraph Deployment[Deployment Options]
-        Docker[Docker Compose<br/>Local Dev] --> K8s[Kubernetes<br/>Production]
-        K8s --> Helm[Helm Chart<br/>infralens]
-    end
-    
-    Image --> YOLO
-    Analysis --> Ollama
-    Ollama --> Report
-    UI --> API
-    PDF --> UI
-    K8s --> Helm
-    
-    classDef input fill:#f9f,stroke:#333;
-    classDef service fill:#bbf,stroke:#333;
-    classDef output fill:#bfb,stroke:#333;
-    classDef deploy fill:#fbb,stroke:#333;
-    class Image input;
-    class YOLO,Analysis,Ollama service;
-    class UI,PDF,API output;
-    class Docker,K8s,Helm deploy;
+flowchart LR
+    IMG["Infra image<br/>JPG / PNG / TIFF"] --> YOLO["YOLOv8s<br/>rust detection"]
+    YOLO --> ANALYSIS["Severity assessment<br/>bounding boxes"]
+    ANALYSIS --> LLM["Local LLM<br/>via Ollama"]
+    KB["Safety reference<br/>knowledge base"] --> LLM
+    LLM --> REPORT["Technical report<br/>DE / EN"]
+    REPORT --> API["FastAPI<br/>/predict, /analyze-report"]
+    API --> UI["Streamlit<br/>visual results"]
+    API --> Prom["Prometheus"]
+    Prom --> Graf["Grafana"]
+
+    classDef data fill:#e3f2fd,stroke:#1565c0,stroke-width:1px,color:#0d47a1
+    classDef train fill:#fff3e0,stroke:#e65100,stroke-width:1px,color:#bf360c
+    classDef track fill:#f3e5f5,stroke:#6a1b9a,stroke-width:1px,color:#4a148c
+    classDef serve fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px,color:#1b5e20
+    classDef observe fill:#eceff1,stroke:#37474f,stroke-width:1px,color:#263238
+
+    class IMG,KB data
+    class YOLO,ANALYSIS train
+    class LLM,REPORT track
+    class API,UI serve
+    class Prom,Graf observe
 ```
 
 ## Professional Feature Table

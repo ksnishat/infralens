@@ -38,7 +38,7 @@
 📊 **Prometheus `/metrics`** — The API now actually exposes the metrics the README promised (it previously returned 404)
 🐛 **Dependency fixes** — `mlflow`, `numpy`, `opencv-python-headless`, `pillow` were imported but undeclared; now in `requirements.txt`
 🐛 **Compose fix** — removed `network_mode: "bridge"` which conflicted with the implicit network and broke `docker compose up`
-✅ **Test suite green** — 15/15 passing (was 8 failed + 1 error)
+✅ **Test suite green** — 75 unit + 8 live integration tests passing (was 8 failed + 1 error)
 
 ## Architecture
 

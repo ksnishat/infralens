@@ -30,7 +30,12 @@ GRAFANA_PORT=3002
 PROJECT="infralens"
 ENV_NAME="infralens-env"
 API_IMPORT="from app.main import app"
-MODEL_ENV="ENABLE_MODEL_RELOAD=true"
+# API_KEY and MAX_UPLOAD_BYTES are part of MODEL_ENV on purpose: the watchdog
+# restarts the API with this same environment, so a key that lived only in the
+# initial start command would be silently dropped after a crash — the API would
+# come back up with auth disabled. The demo default keeps the stack secure by
+# default; override API_KEY for anything real.
+MODEL_ENV="ENABLE_MODEL_RELOAD=true API_KEY=${API_KEY:-demo-secret-key} MAX_UPLOAD_BYTES=${MAX_UPLOAD_BYTES:-10485760}"
 
 log()  { printf '\033[1;34m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
 ok()   { printf '  \033[0;32m\u2713\033[0m %s\n' "$*"; }

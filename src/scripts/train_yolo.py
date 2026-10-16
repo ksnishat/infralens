@@ -8,6 +8,7 @@ Trains a YOLOv8 model for rust/corrosion detection with:
 - Early stopping support
 """
 import os
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -135,7 +136,23 @@ def train_yolo(
             )
             mlflow.log_artifact(str(best_model_path), artifact_path="model_weights")
 
-        # 7. Log training plots
+            # 7. Publish to the serving path.
+            #
+            # Without this the DAG trained a model, logged it to MLflow, and
+            # reported success — while the API kept loading the old weights from
+            # MODEL_PATH. Every component was green and the retrain had no
+            # effect. The copy is what closes the loop; the reload task that
+            # follows only re-reads whatever is at MODEL_PATH.
+            serving_path = os.getenv("MODEL_PATH", "src/ai_models/rust_v8s_best.pt")
+            try:
+                serving = Path(serving_path)
+                serving.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(best_model_path, serving)
+                print(f"Published new weights to {serving}")
+            except Exception as e:  # noqa: BLE001 - must not fail a good run
+                print(f"WARNING: could not publish weights to {serving_path}: {e}")
+
+        # 8. Log training plots
         for plot_name in ["results.png", "confusion_matrix.png"]:
             plot_path = Path(f"runs/train/{run_name}/{plot_name}")
             if plot_path.exists():

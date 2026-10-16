@@ -52,3 +52,47 @@ class TestTrainYolo:
         assert mock_mlflow.log_params.called
         # log_metrics may or may not be called depending on results_dict
         # The key is that the training function runs without error
+
+
+class TestServingPublish:
+    """Training must publish weights to the path the API actually loads.
+
+    Without this the DAG trained a model, logged it to MLflow, and reported
+    success — while the API kept loading the old weights from MODEL_PATH. Every
+    component was green and the retrain had no effect.
+    """
+
+    @patch("src.scripts.train_yolo.mlflow")
+    def test_publishes_weights_to_model_path(self, mock_mlflow, tmp_path, monkeypatch):
+        import sys
+        from pathlib import Path
+
+        # A fake training run that produces a best.pt on disk.
+        run_name = "publish_test"
+        weights = Path("runs/train") / run_name / "weights"
+        weights.mkdir(parents=True, exist_ok=True)
+        (weights / "best.pt").write_bytes(b"fake-weights")
+
+        serving = tmp_path / "serving" / "rust_v8s_best.pt"
+        monkeypatch.setenv("MODEL_PATH", str(serving))
+
+        mock_yolo = MagicMock()
+        mock_model = MagicMock()
+        mock_yolo.return_value = mock_model
+        mock_results = MagicMock()
+        mock_results.results_dict = {"metrics/mAP50": 0.4}
+        mock_model.train.return_value = mock_results
+
+        try:
+            with patch.dict(sys.modules, {"ultralytics": MagicMock(YOLO=mock_yolo)}):
+                train_yolo(epochs=1, batch_size=8, run_name=run_name)
+
+            assert serving.exists(), (
+                "training must copy best.pt to MODEL_PATH, otherwise the reload "
+                "task re-reads the old weights and the retrain has no effect"
+            )
+            assert serving.read_bytes() == b"fake-weights"
+        finally:
+            import shutil
+
+            shutil.rmtree(Path("runs/train") / run_name, ignore_errors=True)

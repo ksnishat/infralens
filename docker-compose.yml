@@ -181,6 +181,11 @@ services:
   airflow-webserver:
     image: infralens-airflow:latest
     container_name: infralens_airflow_webserver
+    # Run as the host user with GID 0. The Airflow image requires GID 0,
+    # and the default uid 50000 cannot write to the host-owned bind
+    # mounts — which is why publishing retrained weights to MODEL_PATH
+    # failed with Permission denied.
+    user: "${AIRFLOW_UID:-1000}:0"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     build:
@@ -232,6 +237,11 @@ services:
   airflow-scheduler:
     image: infralens-airflow:latest
     container_name: infralens_airflow_scheduler
+    # Run as the host user with GID 0. The Airflow image requires GID 0,
+    # and the default uid 50000 cannot write to the host-owned bind
+    # mounts — which is why publishing retrained weights to MODEL_PATH
+    # failed with Permission denied.
+    user: "${AIRFLOW_UID:-1000}:0"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     build:

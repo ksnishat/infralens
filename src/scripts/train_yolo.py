@@ -12,6 +12,7 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import mlflow
 import mlflow.pytorch
@@ -54,12 +55,12 @@ def _default_data_yaml() -> str:
 
 
 def train_yolo(
-    data_yaml: str | None = None,
+    data_yaml: Optional[str] = None,
     epochs: int = 100,
     batch_size: int = 16,
     imgsz: int = 640,
     project_name: str = "infralens_rust_detection",
-    run_name: str | None = None,
+    run_name: Optional[str] = None,
 ):
     """Train YOLOv8 model with MLflow tracking.
 

@@ -206,7 +206,30 @@ distinction matters, so here is exactly where it stands.
 
 ## Quick Start
 
-### 1. Install dependencies
+### 1. Get the dataset
+
+The dataset is **Rust Detection v1**, a Roboflow Universe dataset released
+under CC BY 4.0. It is not committed here.
+
+- [Rust Detection v1 on Roboflow Universe](https://universe.roboflow.com/nishat-workspace/rust-detection-6ogya-rl87b/dataset/1)
+
+Download it in **YOLOv8** format and unzip it to the repository root, so the
+layout matches what the training script expects:
+
+```bash
+# after downloading and unzipping the YOLOv8 export
+ls "Rust Detection.v1i.yolov8/"
+# data.yaml  train/  valid/  test/
+```
+
+The dataset YAML is resolved automatically — container mount first, then the
+in-repo `Rust Detection.v1i.yolov8/` — so no arguments are needed.
+
+**Without the dataset** you can still run the API, the tests and the load test:
+the model checkpoint is committed, and the integration tests skip cleanly when
+the data is absent.
+
+### 2. Install dependencies
 
 ```bash
 conda create -n infralens-env python=3.10 -y
@@ -215,7 +238,7 @@ pip install -r requirements.txt
 pip install mlflow numpy opencv-python-headless pillow prometheus-client
 ```
 
-### 2. Train the model (GPU if available)
+### 3. Train the model (GPU if available)
 
 ```bash
 python src/scripts/train_yolo.py --epochs 40 --batch-size 8
@@ -241,13 +264,13 @@ mkdir -p src/ai_models
 cp runs/detect/train/weights/best.pt src/ai_models/rust_v8s_best.pt
 ```
 
-### 3. Start the API
+### 4. Start the API
 
 ```bash
 PYTHONPATH=src uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
-### 4. Verify
+### 5. Verify
 
 ```bash
 curl http://localhost:8001/                         # {"status":"online","service":"InfraLens Backend"}
@@ -259,7 +282,7 @@ curl -X POST http://localhost:8001/predict -F "file=@$IMG"
 # {"filename":"...","detections":[{"class":"Corrosion","confidence":0.575,"bbox":[...]}]}
 ```
 
-### 5. Or launch the whole Docker stack
+### 6. Or launch the whole Docker stack
 
 ```bash
 docker compose up -d          # ollama, api, frontend, grafana, prometheus

@@ -307,6 +307,18 @@ They assert the API detects objects in a real image, that Prometheus is actually
 scraping the API (not merely healthy), and that MLflow, Grafana and MinIO are
 reachable.
 
+## Screenshots
+
+Captured from the running stack, not mocked up.
+
+### Grafana — model diagnostics
+
+![InfraLens Grafana dashboard](docs/screenshots/grafana-dashboard.png)
+
+### API — OpenAPI schema
+
+![InfraLens Swagger UI](docs/screenshots/api-swagger.png)
+
 ## Monitoring & Live Demo
 
 ```bash

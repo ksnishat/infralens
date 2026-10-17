@@ -372,7 +372,7 @@ kubectl apply -f k8s/
 | **`docker compose up` → "mutually exclusive network_mode"** | Fixed in this commit; pull the latest `docker-compose.yml` |
 | **Ollama connection refused** | Verify Ollama is running on port 11434 |
 | **`/metrics` returns 404** | Fixed in this commit — the endpoint is registered on the app |
-| **Grafana shows "No data"** | Re-run `provision_dashboards.py` so the datasource points at the Prometheus container IP |
+| **Grafana shows "No data"** | The provisioning or dashboards directory is not mounted, or Grafana is not on the `mlops-stack` network so it cannot resolve `prom_<project>` | Run `python3 provision_dashboards.py` — it reports which of the two it is |
 | **Agent report empty** | Check the Ollama model is loaded: `ollama list` |
 
 ## Author

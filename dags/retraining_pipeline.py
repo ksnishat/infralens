@@ -82,12 +82,29 @@ def report_drift(**context):
 
     url = os.getenv("INFRALENS_DRIFT_URL", "http://host.docker.internal:8001/drift")
 
+    # /drift enforces X-API-Key. Without the header this returned 401, which the
+    # handler below swallowed as "skipped" — so a run that recorded no drift
+    # state at all looked exactly like one that recorded it.
+    request = urllib.request.Request(url)
+    api_key = os.getenv("API_KEY")
+    if api_key:
+        request.add_header("X-API-Key", api_key)
+
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             payload = json.loads(response.read().decode())
         return {"status": "reported", "drift": payload}
-    except (urllib.error.URLError, urllib.error.HTTPError) as exc:
-        return {"status": "skipped", "reason": str(exc)}
+    except urllib.error.HTTPError as exc:
+        # A 401/403 means we were rejected, not that the API is absent. That is
+        # a misconfiguration and must fail the run rather than pass silently.
+        if exc.code in (401, 403):
+            raise RuntimeError(
+                f"drift endpoint rejected the request (HTTP {exc.code}). "
+                "Check that API_KEY matches the serving API."
+            ) from exc
+        return {"status": "skipped", "reason": f"HTTP {exc.code}"}
+    except urllib.error.URLError as exc:
+        return {"status": "skipped", "reason": f"API unreachable: {exc.reason}"}
 
 
 default_args = {

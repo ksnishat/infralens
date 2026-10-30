@@ -2,8 +2,14 @@ fastapi==0.109.0
 uvicorn==0.27.0
 sqlalchemy==2.0.25
 psycopg2-binary==2.9.9
-pydantic==2.5.3
-pydantic-settings==2.1.0
+# pydantic must stay >=2.7.4: langchain-core (pulled in by langchain-ollama)
+# declares that floor, and pip cannot resolve pydantic==2.5.3 against it. That
+# conflict is what failed CI's `pip install -r requirements.txt` step on every
+# run since 2026-10-17 — the jobs that do not install requirements passed, so
+# only `test (3.10)` went red. FastAPI 0.109.0 accepts pydantic<3.0.0, so this
+# range is compatible with the pin above.
+pydantic>=2.7.4,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
 python-dotenv==1.0.1
 alembic==1.13.1
 python-multipart

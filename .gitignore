@@ -44,7 +44,18 @@ runs/
 *.onnx
 *.h5
 ai_models/
-core
+# A bare `core` pattern matches any path component named `core`, including the
+# src/core/ package — which silently excluded src/core/agent.py and its
+# __init__.py from the repository. The API imports that module inside a
+# try/except that only prints a warning, so a checkout without it degraded to
+# a template safety report instead of failing. Anchor the pattern to core
+# dumps at the repository root instead.
+/core
+core.[0-9]*
+
+# --- Test artifacts ---
+coverage.xml
+.coverage
 
 # --- User Uploads ---
 uploaded_images/

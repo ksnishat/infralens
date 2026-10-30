@@ -1,0 +1,29 @@
+# GPU serving dependencies for the InfraLens API.
+#
+# Same as requirements-serve.txt but with the CUDA build of torch, so YOLOv8
+# runs on an NVIDIA GPU. Use on a GPU host (Hugging Face Spaces ZeroGPU, Azure
+# NC-series, or a local machine with the NVIDIA container runtime).
+
+# --- Inference (CUDA) ---
+torch
+torchvision
+ultralytics
+opencv-python-headless
+pillow
+numpy
+
+# --- API ---
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+prometheus-client
+requests
+
+# --- RAG (optional; the API degrades gracefully without it) ---
+langchain-core
+langchain-community
+langchain-ollama
+
+# --- Logging ---
+python-json-logger

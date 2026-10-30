@@ -64,9 +64,17 @@ Thumbs.db
 # --- MLflow ---
 mlruns/
 mlflow.db
+mlflow.db.bak-*
 
 # --- MinIO local data (created by start_all_stacks.sh) ---
 .minio-data/
 
 # --- live stack logs (created by run_stack.sh) ---
 .stack-logs/
+
+# Terraform local state and cached providers must never be committed: state
+# contains every resource attribute, including passwords the provider stores.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log

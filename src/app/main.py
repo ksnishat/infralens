@@ -55,9 +55,24 @@ try:
         "infralens_drift_status",
         "Drift interpretation: 0=stable, 1=moderate, 2=significant, -1=unknown",
     )
+    AB_AGREEMENT = Gauge(
+        "infralens_ab_agreement_ratio",
+        "Fraction of images where the shadow model agreed with the champion "
+        "on the set of detected classes",
+    )
+    AB_COMPARISONS = Counter(
+        "infralens_ab_comparisons_total",
+        "Total shadow-model A/B comparisons run",
+    )
+    AB_LATENCY_DELTA = Histogram(
+        "infralens_ab_latency_delta_seconds",
+        "Shadow minus champion inference latency in seconds",
+        buckets=(-1.0, -0.5, -0.1, -0.05, 0.0, 0.05, 0.1, 0.5, 1.0),
+    )
 except ImportError:  # pragma: no cover
     REQUEST_COUNT = DETECTION_COUNT = INFERENCE_LATENCY = MODEL_LOADED = None
     DRIFT_PSI = DRIFT_STATUS = None
+    AB_AGREEMENT = AB_COMPARISONS = AB_LATENCY_DELTA = None
     generate_latest = CONTENT_TYPE_LATEST = Response = None
 
 # Import our new AI Agent (The Brain)
@@ -87,6 +102,12 @@ app.add_middleware(
 # We load this once at startup to save RAM
 MODEL_PATH = os.getenv("MODEL_PATH", "src/ai_models/rust_v8s_best.pt")
 
+# Optional challenger weights for shadow A/B comparison. When set, /predict-ab
+# runs both models on the same image and reports agreement, so a candidate
+# model can be evaluated on live traffic before it is promoted.
+SHADOW_MODEL_PATH = os.getenv("SHADOW_MODEL_PATH", "")
+shadow_model = None
+
 
 def load_model() -> bool:
     """Load (or reload) the YOLO detector from disk.
@@ -111,6 +132,32 @@ def load_model() -> bool:
 
 
 load_model()
+
+
+def load_shadow_model() -> bool:
+    """Load the optional challenger model used for shadow A/B comparison.
+
+    Returns False when SHADOW_MODEL_PATH is unset, which is the default: A/B
+    comparison is opt-in so a normal deployment does not pay for a second model
+    in memory.
+    """
+    global shadow_model
+
+    if not SHADOW_MODEL_PATH:
+        shadow_model = None
+        return False
+
+    try:
+        shadow_model = YOLO(SHADOW_MODEL_PATH)
+        print(f"✅ Shadow model loaded for A/B comparison ({SHADOW_MODEL_PATH})")
+        return True
+    except Exception as e:
+        print(f"❌ Error loading shadow model: {e}")
+        shadow_model = None
+        return False
+
+
+load_shadow_model()
 
 
 @app.post("/admin/reload-model", dependencies=[Depends(require_api_key)])
@@ -187,6 +234,77 @@ async def predict_rust(file: UploadFile = File(...)):
     drift = observe_detection_drift(detections)
 
     return {"filename": file.filename, "detections": detections, "drift": drift}
+
+
+def _run_detector(detector, image):
+    """Run one detector and return (detections, elapsed_seconds)."""
+    t0 = time.perf_counter()
+    results = detector(image)
+    elapsed = time.perf_counter() - t0
+
+    detections = []
+    for result in results:
+        for box in result.boxes:
+            detections.append({
+                "class": detector.names[int(box.cls)],
+                "confidence": float(box.conf),
+                "bbox": box.xyxy.tolist()[0],
+            })
+    return detections, elapsed
+
+
+@app.post("/predict-ab", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
+async def predict_ab(file: UploadFile = File(...)):
+    """Shadow A/B comparison of the champion and challenger detectors.
+
+    Both models run on the same image. The response reports each model's
+    detections, their latencies, and whether they agreed on the set of detected
+    classes. This is how a candidate model is evaluated on live traffic before
+    promotion: the champion still serves /predict, so a bad challenger cannot
+    affect users.
+
+    Requires SHADOW_MODEL_PATH to be set; returns 503 otherwise.
+    """
+    if not model:
+        raise HTTPException(status_code=500, detail="Champion model not loaded")
+    if not shadow_model:
+        raise HTTPException(
+            status_code=503,
+            detail="No shadow model configured. Set SHADOW_MODEL_PATH to enable A/B comparison.",
+        )
+
+    contents = await read_upload(file)
+    image = Image.open(io.BytesIO(contents))
+
+    champion_detections, champion_elapsed = _run_detector(model, image)
+    shadow_detections, shadow_elapsed = _run_detector(shadow_model, image)
+
+    champion_classes = {d["class"] for d in champion_detections}
+    shadow_classes = {d["class"] for d in shadow_detections}
+    agreement = champion_classes == shadow_classes
+
+    if AB_COMPARISONS is not None:
+        AB_COMPARISONS.inc()
+        AB_AGREEMENT.set(1.0 if agreement else 0.0)
+        AB_LATENCY_DELTA.observe(shadow_elapsed - champion_elapsed)
+
+    return {
+        "filename": file.filename,
+        "champion": {
+            "model_path": MODEL_PATH,
+            "detections": champion_detections,
+            "latency_ms": round(champion_elapsed * 1000, 2),
+        },
+        "challenger": {
+            "model_path": SHADOW_MODEL_PATH,
+            "detections": shadow_detections,
+            "latency_ms": round(shadow_elapsed * 1000, 2),
+        },
+        "agreement": agreement,
+        "champion_only_classes": sorted(champion_classes - shadow_classes),
+        "challenger_only_classes": sorted(shadow_classes - champion_classes),
+        "latency_delta_ms": round((shadow_elapsed - champion_elapsed) * 1000, 2),
+    }
 
 
 # --- Detection-distribution drift -------------------------------------------

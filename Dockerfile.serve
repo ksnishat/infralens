@@ -1,0 +1,55 @@
+# ============================================================
+# Slim serving image for InfraLens.
+#
+# The full Dockerfile builds on ultralytics/ultralytics:latest, which ships the
+# CUDA build of torch and produces an ~11.9 GB image. The API only needs CPU
+# inference, so this image installs requirements-serve.txt (CPU torch) on a
+# plain slim base. Training stays in the full image.
+# ============================================================
+
+FROM python:3.10-slim AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-serve.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements-serve.txt
+
+# ---- Runtime ----
+FROM python:3.10-slim AS runtime
+
+WORKDIR /app
+
+# libgl1 and libglib2.0-0 are required by opencv-python-headless at import time.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+COPY src/ ./src/
+
+ENV PATH=/usr/local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    MODEL_PATH=src/ai_models/rust_v8s_best.pt \
+    YOLO_CONFIG_DIR=/tmp/Ultralytics
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

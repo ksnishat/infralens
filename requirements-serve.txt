@@ -1,0 +1,35 @@
+# Serving-only dependencies for the InfraLens API.
+#
+# The full requirements.txt pulls ultralytics, which drags in the CUDA build of
+# torch (3.2 GB of nvidia wheels) plus triton. The API only needs CPU
+# inference, so the CPU torch index is used here instead.
+#
+# Install with:
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+#               -r requirements-serve.txt
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# --- Inference (CPU) ---
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+ultralytics
+opencv-python-headless
+pillow
+numpy
+
+# --- API ---
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+prometheus-client
+requests
+
+# --- RAG (optional; the API degrades gracefully without it) ---
+langchain-core
+langchain-community
+langchain-ollama
+
+# --- Logging ---
+python-json-logger

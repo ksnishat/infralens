@@ -13,6 +13,15 @@ Usage:
 import logging
 import os
 
+# This module is imported both as `src.core.agent` (tests, the API) and as a
+# top-level `agent` (scripts run from src/). A bare `from retry import ...` only
+# works in the second case, so try the package-relative path first and fall
+# back to the flat one.
+try:  # pragma: no cover - depends on how the module is imported
+    from src.retry import retry_transient
+except ImportError:  # pragma: no cover
+    from retry import retry_transient
+
 logger = logging.getLogger(__name__)
 
 
@@ -112,15 +121,13 @@ def generate_safety_report(detection_data: str) -> str:
 
     # Use Llama 3 for report generation
     try:
-        import requests
-
         url = f"{_get_ollama_url()}/api/generate"
         payload = {
             "model": _get_ollama_model(),
             "prompt": _build_safety_report_prompt(detection_data),
             "stream": False,
         }
-        response = requests.post(url, json=payload, timeout=30)
+        response = _post_generate(url, payload)
         if response.status_code == 200:
             result = response.json()
             text = result.get("response", "")
@@ -133,6 +140,25 @@ def generate_safety_report(detection_data: str) -> str:
     except Exception as e:
         logger.error(f"Ollama request failed: {e}")
         return _template_based_report(detection_data)
+
+
+@retry_transient(attempts=3, base_delay=0.4, max_delay=4.0)
+def _post_generate(url: str, payload: dict):
+    """POST to Ollama, retrying transient transport failures only.
+
+    Ollama answers 503 while a model is loading and resets connections when
+    several requests arrive together. Both clear on their own within a second,
+    so retrying turns a spurious 500 into a slightly slower success. An HTTP
+    error status is returned to the caller untouched — retrying a 404 for a
+    mistyped model name would only add latency.
+    """
+    import requests
+
+    response = requests.post(url, json=payload, timeout=30)
+    if response.status_code >= 500:
+        # 5xx is the retryable class; raise a transport error to trigger it.
+        raise ConnectionError(f"Ollama returned {response.status_code}")
+    return response
 
 
 def _is_ollama_available() -> bool:

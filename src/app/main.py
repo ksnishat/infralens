@@ -4,7 +4,7 @@ import sys
 import time
 
 import numpy as np
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from ultralytics import YOLO
@@ -14,7 +14,10 @@ from ultralytics import YOLO
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth import auth_enabled, require_api_key  # noqa: E402
+from ratelimit import PREDICT_LIMIT, REPORT_LIMIT, limiter  # noqa: E402
+from ratelimit import install as install_rate_limit
 from uploads import enforce_content_length, read_upload  # noqa: E402
+from versioning import install as install_versioning
 
 # Prometheus instrumentation
 try:
@@ -88,6 +91,7 @@ app = FastAPI(
     description="Industrial Rust Detection & Safety Reporting System",
     version="2.0.0"
 )
+install_rate_limit(app)
 
 # 1. CORS Configuration (Allow Streamlit to talk to FastAPI)
 app.add_middleware(
@@ -193,7 +197,8 @@ async def health_check():
     return {"status": "online", "service": "InfraLens Backend", "auth_enabled": auth_enabled()}
 
 @app.post("/predict", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
-async def predict_rust(file: UploadFile = File(...)):
+@limiter.limit(PREDICT_LIMIT)
+async def predict_rust(request: Request, file: UploadFile = File(...)):
     """
     Standard Detection Endpoint.
     Returns: JSON with bounding boxes and confidence scores.
@@ -254,7 +259,8 @@ def _run_detector(detector, image):
 
 
 @app.post("/predict-ab", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
-async def predict_ab(file: UploadFile = File(...)):
+@limiter.limit(PREDICT_LIMIT)
+async def predict_ab(request: Request, file: UploadFile = File(...)):
     """Shadow A/B comparison of the champion and challenger detectors.
 
     Both models run on the same image. The response reports each model's
@@ -433,7 +439,8 @@ def drift_report():
     }
 
 @app.post("/analyze-report", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
-async def analyze_and_report(file: UploadFile = File(...)):
+@limiter.limit(REPORT_LIMIT)
+async def analyze_and_report(request: Request, file: UploadFile = File(...)):
     """
     🚀 SMART ENDPOINT: Vision + Language
     1. Detects rust (YOLO).
@@ -489,3 +496,14 @@ async def analyze_and_report(file: UploadFile = File(...)):
         "detections": detection_summary, # Raw data for UI
         "safety_report": safety_report   # The "Consultant" output
     }
+
+
+# ---------------------------------------------------------------------------
+# API versioning
+# ---------------------------------------------------------------------------
+# Called at the *end* of the module on purpose. `install_versioning` clones the
+# routes that already exist, so running it next to `install_rate_limit(app)`
+# (before any @app.post/@app.get has executed) would find nothing to clone and
+# silently alias zero endpoints. Keeping it last means every route defined above
+# gets a /v1 alias, and the unversioned paths keep working unchanged.
+install_versioning(app)

@@ -33,4 +33,9 @@ python-json-logger
 # --- Tests ---
 pytest
 pytest-cov
-httpx
+# httpx must stay <0.28: starlette 0.35.x (pinned by fastapi 0.109.0 above)
+# still calls httpx.Client(app=...), which httpx 0.28 removed. CI installed the
+# newest httpx and every TestClient fixture errored with
+# "Client.__init__() got an unexpected keyword argument 'app'", so all of
+# test_api.py failed at setup rather than on an assertion.
+httpx>=0.23,<0.28

@@ -89,6 +89,9 @@ jobs:
 
   # --------------------------------------------------------------- security
   security:
+    permissions:
+      security-events: write
+      contents: read
     name: Container Security Scan
     runs-on: ubuntu-latest
     steps:

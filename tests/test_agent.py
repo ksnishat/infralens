@@ -42,6 +42,24 @@ class TestResolveLlmModel:
         chosen, _ = resolve_llm_model(None, "http://x", [DEFAULT_LLM_MODEL])
         assert chosen == DEFAULT_LLM_MODEL
 
+    def test_bare_name_matches_its_latest_tag(self):
+        # Ollama reports "llama3.2:latest"; a configured "llama3.2" is the same
+        # model and must not be reported as missing.
+        chosen, warning = resolve_llm_model("llama3.2", "http://x", ["llama3.2:latest"])
+        assert chosen == "llama3.2:latest"
+        assert warning is None
+
+    def test_explicit_latest_matches_a_bare_available_tag(self):
+        chosen, warning = resolve_llm_model("llama3.2:latest", "http://x", ["llama3.2"])
+        assert chosen == "llama3.2"
+        assert warning is None
+
+    def test_bare_name_does_not_match_a_different_tag(self):
+        # Normalisation must not make every tag look like a match.
+        chosen, warning = resolve_llm_model("llama3.2", "http://x", ["llama3.2:1b"])
+        assert chosen == "llama3.2:1b"
+        assert warning is not None
+
 
 class TestTemplateFallback:
     def test_template_is_marked_as_such(self):

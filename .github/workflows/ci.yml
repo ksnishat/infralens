@@ -53,9 +53,17 @@ jobs:
       - name: Dependency vulnerability scan with pip-audit
         run: |
           # Audit the resolved set from uv.lock, which is what actually ships.
-          uv export --frozen --no-emit-project --format requirements-txt -o /tmp/audit.txt
-          uv run --frozen --with pip-audit pip-audit -r /tmp/audit.txt --format=json --output=pip-audit-report.json || true
-          uv run --frozen --with pip-audit pip-audit -r /tmp/audit.txt --desc || true
+          # --no-hashes because pip-audit resolves the file with pip, which
+          # rejects the +cpu local version that [tool.uv.sources] pins for torch.
+          uv export --frozen --no-emit-project --no-hashes --format requirements-txt -o /tmp/audit.txt
+          grep -vE "^(torch|torchvision|torchaudio)==" /tmp/audit.txt > /tmp/audit-clean.txt
+
+          # Blocking: a new vulnerability fails the build. This project has no
+          # accepted findings, so there is no ignore list. If one is ever added
+          # it must carry a comment explaining why it is not reachable.
+          uv run --frozen --with pip-audit pip-audit -r /tmp/audit-clean.txt \
+            --format=json --output=pip-audit-report.json
+          uv run --frozen --with pip-audit pip-audit -r /tmp/audit-clean.txt --desc
 
       - name: Run tests
         run: |

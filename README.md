@@ -36,7 +36,7 @@
 📈 **MLflow Tracking** — YOLOv8 training with MLflow experiment tracking, data augmentation with bbox preservation
 ☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring)
 📊 **Prometheus `/metrics`** — The API now actually exposes the metrics the README promised (it previously returned 404)
-🐛 **Dependency fixes** — `mlflow`, `numpy`, `opencv-python-headless`, `pillow` were imported but undeclared; now in `requirements.txt`
+🐛 **Dependency fixes** — `mlflow`, `numpy`, `opencv-python-headless`, `pillow` were imported but undeclared; now in `pyproject.toml`
 🐛 **Compose fix** — removed `network_mode: "bridge"` which conflicted with the implicit network and broke `docker compose up`
 ✅ **Test suite green** — 75 unit + 8 live integration tests passing (was 8 failed + 1 error)
 
@@ -232,9 +232,10 @@ the data is absent.
 ### 2. Install dependencies
 
 ```bash
-conda create -n infralens-env python=3.10 -y
-conda activate infralens-env
-pip install -r requirements.txt
+# uv reads pyproject.toml and installs the exact set pinned in uv.lock.
+pip install uv
+uv sync --extra dev
+source .venv/bin/activate
 pip install mlflow numpy opencv-python-headless pillow prometheus-client
 ```
 
@@ -403,7 +404,7 @@ kubectl apply -f k8s/
 | Issue | Solution |
 |-------|----------|
 | **YOLO model not found** | Train with the command above and copy `best.pt` to `src/ai_models/rust_v8s_best.pt`, or point `MODEL_PATH` at an existing checkpoint |
-| **`ModuleNotFoundError: mlflow / cv2 / PIL`** | These are declared in `requirements.txt`; re-run `pip install -r requirements.txt` |
+| **`ModuleNotFoundError: mlflow / cv2 / PIL`** | These are declared in `pyproject.toml`; re-run `uv sync --extra dev` |
 | **`docker compose up` → "mutually exclusive network_mode"** | Fixed in this commit; pull the latest `docker-compose.yml` |
 | **Ollama connection refused** | Verify Ollama is running on port 11434 |
 | **`/metrics` returns 404** | Fixed in this commit — the endpoint is registered on the app |

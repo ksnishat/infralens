@@ -14,7 +14,7 @@ from ultralytics import YOLO
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth import auth_enabled, require_api_key  # noqa: E402
-from ratelimit import PREDICT_LIMIT, REPORT_LIMIT, limiter  # noqa: E402
+from ratelimit import DRIFT_LIMIT, PREDICT_LIMIT, REPORT_LIMIT, limiter  # noqa: E402
 from ratelimit import install as install_rate_limit
 from uploads import enforce_content_length, read_upload  # noqa: E402
 from versioning import install as install_versioning
@@ -412,7 +412,8 @@ def observe_detection_drift(detections: list, min_samples: int = 30) -> dict:
 
 
 @app.get("/drift", dependencies=[Depends(require_api_key)])
-def drift_report():
+@limiter.limit(DRIFT_LIMIT)
+def drift_report(request: Request):
     """Detection-distribution drift against the validation baseline."""
     from src.utils.drift import classify_psi, compute_psi
 

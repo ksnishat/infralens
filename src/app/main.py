@@ -86,6 +86,17 @@ except ImportError:
     print("WARNING: Could not import AI Agent. Make sure src/core/agent.py exists.")
     generate_safety_report = None
 
+# Structured JSON logging. src/utils/logging_config.py existed but was never
+# called, so the service logged unstructured text and the request_id context
+# it maintains was always "N/A". Installing it here is what makes the
+# python-json-logger dependency in pyproject.toml actually used.
+try:
+    from src.utils.logging_config import setup_logging
+
+    setup_logging()
+except Exception as exc:  # pragma: no cover - logging must never block startup
+    print(f"WARNING: structured logging unavailable ({exc}); using defaults")
+
 app = FastAPI(
     title="InfraLens API",
     description="Industrial Rust Detection & Safety Reporting System",

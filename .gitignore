@@ -92,3 +92,8 @@ crash.log
 
 # Lock generator writes its intermediate report here if run without an arg
 /tmp/_lock_report.json
+
+# --- Build artifacts ---
+*.egg-info/
+build/
+dist/

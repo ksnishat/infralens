@@ -1,59 +1,37 @@
 # DVC Pipeline for InfraLens
-# Bronze → Silver → Gold image processing pipeline
+# Bronze -> Train
+#
+# Every stage below references a script that exists in this repository and
+# declares only outputs the script actually produces. Run the whole pipeline
+# with `dvc repro`, or a single stage with `dvc repro <stage>`.
+#
+# The raw dataset is not committed. Fetch it first (see the README) and place
+# it at data/raw, or pass a different --source.
 
 stages:
   # === BRONZE LAYER: Raw data ingestion ===
   extract_bronze:
-    cmd: python src/scripts/extract_bronze.py
+    cmd: python src/scripts/extract_bronze.py --source data/raw --output data/bronze
     deps:
       - src/scripts/extract_bronze.py
     outs:
-      - data/bronze/images_raw.dvc
+      - data/bronze
     desc: Collect raw inspection images (bronze layer)
 
-  # === BRONZE → SILVER: Preprocessing ===
-  preprocess_silver:
-    cmd: python src/scripts/preprocess_silver.py
-    deps:
-      - src/scripts/preprocess_silver.py
-      - data/bronze/images_raw.dvc
-      - src/config.py
-    outs:
-      - data/silver/images_processed.dvc
-      - data/silver/annotations.json
-    metrics:
-      - metrics/silver_preprocessing.json:
-          cache: false
-    desc: Resize, normalize, augment images (silver layer)
-
-  # === SILVER → GOLD: Labeling & annotation ===
-  label_gold:
-    cmd: python src/scripts/label_gold.py
-    deps:
-      - src/scripts/label_gold.py
-      - data/silver/images_processed.dvc
-    outs:
-      - data/gold/yolo_dataset.dvc
-      - data/gold/train.txt
-      - data/gold/val.txt
-    metrics:
-      - metrics/gold_labels.json:
-          cache: false
-    desc: YOLO-format annotations and dataset splits (gold layer)
-
   # === MODEL TRAINING ===
+  # The previous version of this file declared preprocess_silver and label_gold
+  # stages pointing at src/scripts/preprocess_silver.py and label_gold.py.
+  # Neither file has ever existed in this repository, so `dvc repro` failed
+  # immediately. The dataset ships pre-split by Roboflow, so there is no
+  # separate preprocessing or labelling step to run.
   train_yolo:
-    cmd: yolo train data=data/gold/yolo_dataset.yaml epochs=100
+    cmd: python src/scripts/train_yolo.py --epochs ${training.epochs} --batch-size ${training.batch_size}
     deps:
-      - data/gold/yolo_dataset.dvc
-      - data/gold/yolo_dataset.yaml
+      - src/scripts/train_yolo.py
+      - "Rust Detection.v1i.yolov8/data.yaml"
+    params:
+      - training.epochs
+      - training.batch_size
     outs:
-      - models/rust_v8s_best.pt
-      - models/results.json
-    metrics:
-      - metrics/model_metrics.json:
-          cache: false
-    plots:
-      - plots/training_curves.png:
-          cache: false
+      - runs/detect
     desc: Train YOLOv8 model for rust detection

@@ -1,3 +1,0 @@
-[console_scripts]
-infralens-api = src.app.main:app
-infralens-ui = src.app.ui:app

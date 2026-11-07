@@ -97,3 +97,4 @@ crash.log
 *.egg-info/
 build/
 dist/
+.ruff_cache/

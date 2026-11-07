@@ -50,21 +50,6 @@ jobs:
           uv run --frozen --with bandit bandit -r src/ -f json -o bandit-report.json || true
           uv run --frozen --with bandit bandit -r src/ --format txt --severity-level medium || true
 
-      - name: Dependency vulnerability scan with pip-audit
-        run: |
-          # Audit the resolved set from uv.lock, which is what actually ships.
-          # --no-hashes because pip-audit resolves the file with pip, which
-          # rejects the +cpu local version that [tool.uv.sources] pins for torch.
-          uv export --frozen --no-emit-project --no-hashes --format requirements-txt -o /tmp/audit.txt
-          grep -vE "^(torch|torchvision|torchaudio)==" /tmp/audit.txt > /tmp/audit-clean.txt
-
-          # Blocking: a new vulnerability fails the build. This project has no
-          # accepted findings, so there is no ignore list. If one is ever added
-          # it must carry a comment explaining why it is not reachable.
-          uv run --frozen --with pip-audit pip-audit -r /tmp/audit-clean.txt \
-            --format=json --output=pip-audit-report.json
-          uv run --frozen --with pip-audit pip-audit -r /tmp/audit-clean.txt --desc
-
       - name: Run tests
         run: |
           uv run --frozen python -m pytest tests/ -v --tb=short -m "not integration" --maxfail=3 --disable-warnings \
@@ -318,6 +303,44 @@ jobs:
             exit 1
           fi
           echo "All checks passed."
+
+  # ---------------------------------------------------------------- audit
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    # Deliberately not in the test matrix. pip-audit shells out to pip inside a
+    # throwaway venv, and uv's managed CPython 3.10 build ships without
+    # ensurepip, so the audit dies with CalledProcessError on 3.10 only. The
+    # finding set is a property of uv.lock, not of the interpreter, so auditing
+    # once on 3.11 covers both matrix legs.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Dependency vulnerability scan with pip-audit
+        run: |
+          # Audit the resolved set from uv.lock, which is what actually ships.
+          # --no-hashes because pip-audit resolves the file with pip, which
+          # rejects the +cpu local version that [tool.uv.sources] pins for torch.
+          uv export --frozen --no-emit-project --no-hashes --format requirements-txt -o /tmp/audit.txt
+          grep -vE "^(torch|torchvision|torchaudio)==" /tmp/audit.txt > /tmp/audit-clean.txt
+
+          # Blocking: a new vulnerability fails the build. The ignore list is the
+          # only way to accept a known finding, and each entry must say why it is
+          # not reachable. An unexplained entry is a bug.
+          uv run --python 3.11 --with pip-audit pip-audit -r /tmp/audit-clean.txt \
+            --format=json --output=pip-audit-report.json
+          uv run --python 3.11 --with pip-audit pip-audit -r /tmp/audit-clean.txt --desc
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------- lockfile
   lockfile:

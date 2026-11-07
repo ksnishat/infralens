@@ -14,7 +14,7 @@ from ultralytics import YOLO
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth import auth_enabled, require_api_key  # noqa: E402
-from ratelimit import DRIFT_LIMIT, PREDICT_LIMIT, REPORT_LIMIT, limiter  # noqa: E402
+from ratelimit import ADMIN_LIMIT, DRIFT_LIMIT, PREDICT_LIMIT, REPORT_LIMIT, limiter  # noqa: E402
 from ratelimit import install as install_rate_limit
 from uploads import enforce_content_length, read_upload  # noqa: E402
 from versioning import install as install_versioning
@@ -165,7 +165,8 @@ load_shadow_model()
 
 
 @app.post("/admin/reload-model", dependencies=[Depends(require_api_key)])
-async def reload_model():
+@limiter.limit(ADMIN_LIMIT)
+async def reload_model(request: Request):
     """Re-read the detector weights from disk without restarting the API.
 
     The retraining DAG writes new weights, then calls this so the fresh model is

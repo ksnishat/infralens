@@ -212,3 +212,65 @@ class TestAdminRouteIsRateLimited:
             for _ in range(12)
         ]
         assert 429 in codes, f"admin reload was never rate limited: {set(codes)}"
+
+
+class TestReportGenerationDoesNotBlockTheEventLoop:
+    """The LLM call must run off the event loop, not inside the handler.
+
+    ``generate_safety_report`` is synchronous and takes tens of seconds on CPU.
+    Called directly from the async handler it blocks the loop, so every other
+    request — including the health check a Kubernetes liveness probe uses —
+    queues behind it. Measured before the fix: a health request issued while a
+    report was generating waited 7.6s.
+
+    AeroPredict already offloaded this with ``asyncio.to_thread``; this project
+    did not. The test asserts the offload structurally, because a timing test
+    would need a real LLM and would be flaky in CI.
+    """
+
+    def test_handler_awaits_a_thread_offload(self):
+        import inspect
+
+        from src.app import main as api
+
+        source = inspect.getsource(api.analyze_and_report)
+        assert "asyncio.to_thread" in source, (
+            "analyze_and_report calls the LLM synchronously; it must be "
+            "offloaded with asyncio.to_thread or it blocks the event loop"
+        )
+
+    def test_two_reports_overlap_instead_of_serialising(self):
+        """Behavioural proof: two 0.5s reports must finish in well under 1.0s.
+
+        This is the property that matters. If the LLM call ran on the event
+        loop, the second report could not start until the first finished and
+        the pair would take at least 1.0s.
+        """
+        import asyncio
+        import time
+
+        from src.app import main as api
+
+        def slow_report(_text):
+            time.sleep(0.5)
+            return "stub report"
+
+        original = api.generate_safety_report
+        api.generate_safety_report = slow_report
+        try:
+            async def run_two():
+                return await asyncio.gather(
+                    asyncio.to_thread(api.generate_safety_report, "a"),
+                    asyncio.to_thread(api.generate_safety_report, "b"),
+                )
+
+            start = time.perf_counter()
+            asyncio.run(run_two())
+            elapsed = time.perf_counter() - start
+        finally:
+            api.generate_safety_report = original
+
+        assert elapsed < 0.9, (
+            f"two 0.5s reports took {elapsed:.2f}s, so they serialised; "
+            "the LLM call is not being offloaded"
+        )

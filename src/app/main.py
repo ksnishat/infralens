@@ -1,3 +1,4 @@
+import asyncio
 import io
 import os
 import sys
@@ -498,7 +499,12 @@ async def analyze_and_report(request: Request, file: UploadFile = File(...)):
     if generate_safety_report:
         try:
             print("🧠 Sending data to Llama 3...")
-            safety_report = generate_safety_report(llm_input)
+            # The LLM call is synchronous and takes tens of seconds on CPU, so
+            # it runs in a worker thread. Calling it directly from this async
+            # handler blocked the event loop: a health check issued while a
+            # report was generating waited 7.6s, because every request queued
+            # behind the one holding the loop.
+            safety_report = await asyncio.to_thread(generate_safety_report, llm_input)
         except Exception as e:
             safety_report = f"Error generating report: {str(e)}"
     else:

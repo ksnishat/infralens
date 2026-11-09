@@ -18,7 +18,11 @@
 
 **InfraLens** is an automated computer vision system for industrial safety. It detects corrosion on infrastructure using a custom-trained **YOLOv8** model and employs a **Generative AI agent (a local LLM via Ollama)** to draft technical safety reports in German/English compliant with ISO standards.
 
-## Key Features
+---
+
+**At a glance** — mAP50 **0.399** · 117 unit tests · 11 CI jobs · YOLOv8s + shadow A/B + local LLM reports
+
+### What it does
 
 - **Custom Vision:** YOLOv8 model (`rust_v8s_best.pt`) for surface-defect detection.
 - **AI Safety Consultant:** Local LLM agent (via Ollama, model configurable) with template-based fallback for automated report generation and recommendations.
@@ -28,22 +32,7 @@
 - **Edge AI Ready:** Optimized for NVIDIA GPU passthrough on edge devices and K8s clusters.
 - **Multi-language Reports:** Generates technical reports in German and English per ISO standards.
 
-
-### Recent Improvements (2026)
-🔧 **Makefile** — Standardized commands: `make test`, `make lint`, `make docker-up`, `make k8s-deploy`
-📦 **uv + pyproject.toml** — `uv.lock` is the install source; `uv sync --locked` fails if the lock drifts from `pyproject.toml`
-🔒 **Pre-commit hooks** — Ruff, mypy, black, trailing whitespace, YAML validation
-📈 **MLflow Tracking** — YOLOv8 training with MLflow experiment tracking, data augmentation with bbox preservation
-☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring), `fmt`-clean and `validate`-checked in CI
-📊 **Prometheus `/metrics`** — The API now actually exposes the metrics the README promised (it previously returned 404)
-⚡ **Non-blocking LLM calls** — `/analyze-report` runs the LLM in a worker thread; a health check issued during a 52-second generation waited 7.6s before the fix and 1.5ms after
-🔒 **10-job CI** — Python 3.10 + 3.11 matrix, Bandit, pip-audit with a documented allowlist, Trivy SARIF, mypy, Terraform validate, Docker image build-and-serve
-🐛 **Dependency fixes** — `mlflow`, `numpy`, `opencv-python-headless`, `pillow` were imported but undeclared; now in `pyproject.toml`
-🐛 **Compose fix** — removed `network_mode: "bridge"` which conflicted with the implicit network and broke `docker compose up`
-✅ **Test suite green** — 117 unit + 8 live integration tests passing (was 8 failed + 1 error)
-🖥️ **Dashboard runs on the host** — the Streamlit UI hardcoded the compose DNS name `http://backend:8000`, so every request failed outside a container. `API_URL` is now read from the environment with a localhost default, and `start_all_stacks.sh` launches it on :8502
-
-## Architecture
+### Architecture
 
 ```mermaid
 flowchart LR
@@ -72,9 +61,6 @@ flowchart LR
     class Prom,Graf observe
     class CI gate
 ```
-
-### Request path
-
 The LLM call takes roughly 52 seconds on CPU. It runs in a worker thread so it
 cannot stall the event loop — before that fix, a health check issued during a
 report waited 7.6 seconds, which is long enough for a Kubernetes liveness probe
@@ -101,36 +87,7 @@ sequenceDiagram
     A-->>C: detections, safety_report
 ```
 
-## Professional Feature Table
-
-| Feature | Description | Business Value | German Industry Relevance |
-|---------|-------------|----------------|---------------------------|
-| **Rust Detection** | YOLOv8 custom model for corrosion detection | Automates a first-pass visual triage of inspection imagery | Meets DIN EN ISO 12944 corrosion protection standards |
-| **Severity Assessment** | AI-powered severity classification (low/medium/high) | Prioritizes maintenance resources effectively | Aligns with TÜV inspection requirements |
-| **Automated Reporting** | A local LLM generates ISO-compliant report drafts in German/English | Removes the blank-page step from inspection write-ups | Supports German regulatory documentation (Bauteilkataloge) |
-| **Edge Deployment** | Optimized for NVIDIA GPU edge devices | Enables on-site inspection without cloud dependency | Critical for remote German infrastructure (bridges, railways) |
-| **Real-time Detection** | Streamlit dashboard with live detection visualization | Enables immediate decision-making | Supports German safety regulations (DGUV Vorschrift 3) |
-| **Scalable Architecture** | Kubernetes-ready with HPA and GPU scheduling | Handles large-scale infrastructure monitoring | Compatible with German Industrie 4.0 cloud infrastructure |
-| **CI/CD Pipeline** | Automated testing and deployment | Ensures model quality and rapid iteration | Supports DevOps practices in Mittelstand companies |
-| **Data Privacy** | Local Ollama deployment, no data leaves premises | Protects sensitive infrastructure data | Complies with BDSG (German GDPR implementation) |
-
-## Why This Matters for German Industry
-
-Germany's infrastructure—bridges, railways, pipelines, and industrial facilities—requires rigorous inspection regimes under strict regulatory frameworks:
-
-1. **DIN EN ISO 12944 Compliance**: The platform's severity assessment aligns with German corrosion protection standards for steel structures.
-
-2. **Bauteilkataloge Support**: Automated reports meet the format requirements of German building component catalogs (DIBt guidelines).
-
-3. **DGUV Compliance**: Real-time safety monitoring supports German accident prevention regulations (DGUV Vorschrift 3).
-
-4. **Mittelstand Digitalization**: Edge AI deployment enables small and medium enterprises to implement AI without massive cloud investments.
-
-5. **Energy Sector Applications**: Pipeline and wind turbine inspection—critical for Germany's Energiewende (energy transition).
-
-6. **TÜV Certification Ready**: The modular architecture supports documentation requirements for TÜV (Technical Inspection Association) certification.
-
-## Verified Model Metrics
+### Verified results
 
 Reproduced locally on an NVIDIA RTX 3050 Ti (4 GB) with Ultralytics 8.4.
 
@@ -144,331 +101,80 @@ Reproduced locally on an NVIDIA RTX 3050 Ti (4 GB) with Ultralytics 8.4.
 | Recall | 0.294 |
 | **mAP50** | **0.399** |
 | mAP50-95 | 0.259 |
-
-### Note on the metrics
-
 The dataset is deliberately small (40 training images), so recall and mAP are
 low. This is a data-volume limitation, not a pipeline defect. The reported
 precision of 1.00 with 0.294 recall means the model is conservative — it only
 flags corrosion it is confident about. Scaling to a few hundred annotated
 images is the single highest-value next step.
 
-## API endpoints
+### Why this matters in Germany
 
-All endpoints except `/` and `/metrics` require the `X-API-Key` header when auth
-is enabled. Rate limits come from `src/ratelimit.py`.
+| Standard / driver | How it applies |
+|---|---|
+| **DIN EN ISO 12944** | Severity assessment aligns with German corrosion-protection grading for steel structures |
+| **DGUV Vorschrift 3** | Real-time safety monitoring supports accident-prevention requirements |
+| **TÜV / DIBt** | Report format supports documentation for inspection and component-catalogue requirements |
+| **Mittelstand** | Edge deployment avoids a cloud dependency small firms cannot fund |
+| **Energiewende** | Pipeline and wind-turbine inspection |
+
+### API
+
+All endpoints except `/` and `/metrics` require `X-API-Key`. Full payloads: [docs/OPERATIONS.md](./docs/OPERATIONS.md).
 
 | Method | Path | Limit | Purpose |
 |--------|------|-------|---------|
-| `GET` | `/` | none | Health probe. Reports `model_loaded` and `auth_enabled` |
-| `POST` | `/predict` | 60/min | Upload an image, get rust detections |
-| `POST` | `/predict-ab` | 60/min | Shadow A/B: champion and challenger run on the same image, response reports both sets of detections, both latencies, and whether they agreed. Returns `503` unless `SHADOW_MODEL_PATH` is set. The champion still serves `/predict`, so a bad challenger cannot affect users |
-| `POST` | `/analyze-report` | 30/min | Detections plus a technical safety report from the local LLM. The LLM call runs in a worker thread, so it does not block the event loop |
-| `GET` | `/drift` | 30/min | Drift state for the detection inputs |
-| `POST` | `/admin/reload-model` | 5/min | Reload the detector without restarting the process |
+| `GET` | `/` | none | Health: `model_loaded`, `auth_enabled` |
+| `POST` | `/predict` | 60/min | Image in, rust detections out |
+| `POST` | `/predict-ab` | 60/min | Champion vs shadow on the same image; `503` unless `SHADOW_MODEL_PATH` is set |
+| `POST` | `/analyze-report` | 30/min | Detections + LLM safety report (off the event loop) |
+| `GET` | `/drift` | 30/min | Drift state for detection inputs |
+| `POST` | `/admin/reload-model` | 5/min | Reload without a restart |
 | `GET` | `/metrics` | none | Prometheus exposition |
 
-## Security
+
+### Quickstart
+
+```bash
+uv sync --extra dev
+uv run python src/scripts/train_yolo.py     # needs the Roboflow export
+uv run uvicorn src.app.main:app --port 8001
+curl -X POST http://localhost:8001/predict \
+     -H "X-API-Key: demo-secret-key" -F "file=@rust.jpg"
+```
+
+Dataset setup, training flags and troubleshooting: **[docs/OPERATIONS.md](./docs/OPERATIONS.md)**.
+
+### Stack
+
+| Service | Port | | Service | Port |
+|---|---|---|---|---|
+| FastAPI | 8001 | | Prometheus | 9091 |
+| Streamlit UI | 8502 | | Grafana | 3002 |
+| MLflow | 5002 | | MinIO | 9002 |
+| TLS proxy | 8444 | | | |
+
+
+`start_all_stacks.sh` (workspace root) starts every service for all four projects; `verify_live_stack.sh` checks 32 endpoints.
+
+### Security
 
 | Control | Implementation |
-|---------|---------------|
-| API-key auth | `src/auth.py` — `X-API-Key` on `/predict`, `/drift`, `/admin/reload-model`. Off when `API_KEY` is unset. |
-| Constant-time comparison | `secrets.compare_digest`, so response timing does not leak the key length or prefix. |
-| TLS | `infrastructure/tls/` — nginx reverse proxy, TLSv1.2/1.3, `server_tokens off`, security headers. |
-| Upload limit | `src/uploads.py` — `Content-Length` rejected before the body is read; the bytes actually received are checked too. |
-| Health stays open | `/` and `/metrics` are unauthenticated so a load balancer and Prometheus can reach them. They expose no data. |
+|---|---|
+| Auth | `X-API-Key` via `secrets.compare_digest` (constant-time) |
+| TLS | nginx reverse proxy, TLSv1.2/1.3 |
+| Upload limits | `Content-Length` rejected before the body is read |
+| Rate limits | Per-endpoint, 429 on breach |
 
-### Enabling auth
+**Not in place:** RBAC, a secret manager, multi-node HA, a soak test. The
+systems are *production-shaped*, not production-grade.
 
-```bash
-export API_KEY="$(openssl rand -hex 32)"
-./run_stack.sh
-```
+### Tests and CI
 
-`run_stack.sh` defaults `API_KEY` to a demo value so the stack is secure by
-default. The key is part of the environment the watchdog restarts the API with,
-so it survives a crash — a key set only on the start command would be silently
-dropped.
-
-### Calling an authenticated endpoint
-
-```bash
-curl -H "X-API-Key: $API_KEY" -F "file=@sample.csv" http://localhost:8000/predict
-```
-
-### Over HTTPS
-
-```bash
-./infrastructure/tls/start_tls_proxy.sh
-curl -k -H "X-API-Key: $API_KEY" -F "file=@sample.csv" https://localhost:8443/predict
-```
-
-The certificate is self-signed, so `-k` is required with curl and a browser will
-warn. A real deployment would use a CA-issued certificate and terminate TLS at
-the load balancer.
-
-### Not in place
-
-No RBAC or per-user identity, no rate limiting, no secret manager (credentials
-are environment variables), and no audit log of who called `/admin/reload-model`.
+| | |
+|---|---|
+| Unit tests | **117** (8 integration tests run against the live stack) |
+| CI jobs | **11**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, README-count check |
 
 ---
 
-## Production readiness
-
-This is a **production-shaped** system, not a production-hardened one. The
-distinction matters, so here is exactly where it stands.
-
-### What is in place
-
-| Capability | Status |
-|-----------|--------|
-| End-to-end MLOps loop | Airflow retrains, MLflow tracks, the API hot-swaps weights without a restart |
-| Drift detection | PSI against a training-time baseline, exposed at `/drift` and as Prometheus gauges |
-| Alerting | 5 Prometheus rules per project, verified loading and evaluating |
-| Authentication | `X-API-Key` on `/predict`, `/drift` and `/admin/reload-model` when `API_KEY` is set |
-| TLS | nginx reverse proxy, TLSv1.2/1.3, security headers (`infrastructure/tls/`) |
-| Upload limits | 10 MiB default, enforced before the body is read (`MAX_UPLOAD_BYTES`) |
-| Self-healing | Watchdog restarts the API and MLflow if they crash; containers use `restart: unless-stopped` |
-| Tests | Unit + live integration suites, run in CI |
-| Load tested | `python3 load_test.py` measures p50/p95/p99 and throughput against the running API |
-
-### What is not in place
-
-| Gap | Why it matters |
-|-----|---------------|
-| **No multi-tenancy or RBAC** | One shared API key. No per-user identity, quotas or audit trail. |
-| **No secret management** | Credentials are environment variables with demo defaults. A deployment needs Vault, SOPS or a cloud secret store. |
-| **Single node, no HA** | One host, one worker process per API. No replication, no failover. |
-| **No sustained soak test** | Load figures are a 60-request burst, not a multi-hour run. |
-| **Drift thresholds not tuned** | 0.10 / 0.25 are the conventional PSI bands, not calibrated to this data. |
-| **No model rollback** | The reload endpoint swaps weights forward only. A bad model needs a manual revert. |
-
-### The honest one-line summary
-
-> "Production-shaped: the full MLOps loop, drift detection, alerting, auth, TLS
-> and self-healing are all in place and verified. Not production-hardened: no
-> RBAC, no secret manager, single node, and the load numbers are a burst rather
-> than a soak test."
-
----
-
-## Quick Start
-
-### 1. Get the dataset
-
-The dataset is **Rust Detection v1**, a Roboflow Universe dataset released
-under CC BY 4.0. It is not committed here.
-
-- [Rust Detection v1 on Roboflow Universe](https://universe.roboflow.com/nishat-workspace/rust-detection-6ogya-rl87b/dataset/1)
-
-Download it in **YOLOv8** format and unzip it to the repository root, so the
-layout matches what the training script expects:
-
-```bash
-# after downloading and unzipping the YOLOv8 export
-ls "Rust Detection.v1i.yolov8/"
-# data.yaml  train/  valid/  test/
-```
-
-The dataset YAML is resolved automatically — container mount first, then the
-in-repo `Rust Detection.v1i.yolov8/` — so no arguments are needed.
-
-**Without the dataset** you can still run the API, the tests and the load test:
-the model checkpoint is committed, and the integration tests skip cleanly when
-the data is absent.
-
-### 2. Install dependencies
-
-```bash
-# uv reads pyproject.toml and installs the exact set pinned in uv.lock.
-pip install uv
-uv sync --extra dev
-source .venv/bin/activate
-pip install mlflow numpy opencv-python-headless pillow prometheus-client
-```
-
-### 3. Train the model (GPU if available)
-
-```bash
-python src/scripts/train_yolo.py --epochs 40 --batch-size 8
-```
-
-The dataset YAML is resolved automatically (container mount, then the in-repo
-`Rust Detection.v1i.yolov8/`), so no arguments are needed on a host checkout.
-Runs are logged to MLflow under the `infralens_rust_detection` experiment.
-
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `--data-yaml` | auto | YOLO dataset YAML |
-| `--epochs` | 100 | Training epochs |
-| `--batch-size` | 16 | Training batch size |
-| `--imgsz` | 640 | Input image size |
-| `--project-name` | `infralens_rust_detection` | MLflow experiment name |
-| `--run-name` | auto | Optional run name |
-
-Copy the best checkpoint into place:
-
-```bash
-mkdir -p src/ai_models
-cp runs/detect/train/weights/best.pt src/ai_models/rust_v8s_best.pt
-```
-
-### 4. Start the API
-
-```bash
-PYTHONPATH=src uvicorn app.main:app --host 0.0.0.0 --port 8001
-```
-
-### 5. Verify
-
-```bash
-curl http://localhost:8001/                         # {"status":"online","service":"InfraLens Backend"}
-curl http://localhost:8001/metrics | grep infralens # Prometheus metrics
-
-# The dataset directory name contains a space, so quote the path.
-IMG=$(find "Rust Detection.v1i.yolov8/valid/images" -type f | head -1)
-curl -X POST http://localhost:8001/predict -F "file=@$IMG"
-# {"filename":"...","detections":[{"class":"Corrosion","confidence":0.575,"bbox":[...]}]}
-```
-
-### 6. Or launch the whole Docker stack
-
-```bash
-docker compose up -d          # ollama, api, frontend, grafana, prometheus
-```
-
-## Running Tests
-
-```bash
-uv run --frozen --extra dev python -m pytest tests/ -v   # 117 passed, 8 deselected
-```
-
-The 8 skipped tests are integration tests that need the live docker stack. They
-are excluded from CI (which has no model checkpoint or dataset) and run against
-real services instead of an in-process `TestClient`:
-
-```bash
-./run_stack.sh
-LIVE_STACK=1 pytest tests/test_integration_live.py -v   # 8 passed
-```
-
-They assert the API detects objects in a real image, that Prometheus is actually
-scraping the API (not merely healthy), and that MLflow, Grafana and MinIO are
-reachable.
-
-## Screenshots
-
-Captured from the running stack, not mocked up.
-
-### Grafana — model diagnostics
-
-![InfraLens Grafana dashboard](docs/screenshots/grafana-dashboard.png)
-
-### API — OpenAPI schema
-
-![InfraLens Swagger UI](docs/screenshots/api-swagger.png)
-
-## Monitoring & Live Demo
-
-```bash
-./run_stack.sh                      # API + MLflow + MinIO + Prometheus + Grafana
-python3 provision_dashboards.py infralens   # datasource + dashboard
-./verify_stack.sh                    # 7 checks, exit 0 when all pass
-```
-
-| Service | URL |
-|---------|-----|
-| FastAPI (Swagger) | http://localhost:8001/docs |
-| Prometheus | http://localhost:9091 |
-| Grafana | http://localhost:3002 (`admin` / `admin`) |
-| Streamlit UI | http://localhost:8502 |
-
-> **All four stacks at once:** the root `start_all_stacks.sh` starts the API,
-> MLflow, MinIO, Prometheus, Grafana, TLS proxy and this dashboard for every
-> project, then `verify_live_stack.sh` checks 32 endpoints. The ports in the
-> table above are the ones that script uses.
-
-### Exposed metrics
-
-| Metric | Type | Meaning |
-|--------|------|---------|
-| `infralens_requests_total` | counter | Requests, labelled by `endpoint` and `status` |
-| `infralens_detections_total` | counter | Detections returned, labelled by `class_name` |
-| `infralens_inference_latency_seconds` | histogram | YOLO inference latency |
-| `infralens_model_loaded` | gauge | 1 when the model is loaded, 0 otherwise |
-| `infralens_detection_drift_psi` | gauge | PSI of the live detection distribution vs the validation baseline |
-| `infralens_drift_status` | gauge | 0 stable, 1 moderate, 2 significant, -1 unknown |
-
-### Drift detection
-
-`GET /drift` reports the Population Stability Index between the live detection
-distribution and the validation baseline. Drift for a detector is measured on
-*what the model reports* (mostly-Corrosion vs mostly-Rust), not on raw pixels,
-because a shift in the class mix is the actionable signal and it needs no labels
-to compute. One observation is recorded per image — the highest-confidence class,
-or `none` when nothing is found — so a single busy image cannot dominate the
-window.
-
-Verified discrimination: a balanced stream gives PSI 0.0006 (stable) while an
-all-Corrosion stream gives 6.91 (significant).
-
-### Scheduled retraining
-
-`dags/retraining_pipeline.py` runs weekly: retrain YOLOv8 → reload the serving
-model → report drift.
-
-```bash
-docker compose up -d airflow-postgres airflow-webserver airflow-scheduler
-docker exec infralens_airflow_scheduler airflow dags unpause infralens_continuous_learning
-docker exec infralens_airflow_scheduler airflow dags trigger infralens_continuous_learning
-```
-
-Airflow UI: http://localhost:8082 (`admin` / `admin`).
-
-The reload step calls `POST /admin/reload-model`, which is disabled unless
-`ENABLE_MODEL_RELOAD=true`. Without it a retrained model would sit on disk while
-the running process kept serving the old weights.
-
-## Docker Compose Notes
-
-The `ollama` service previously declared `network_mode: "bridge"` alongside an
-implicit default network, which makes `docker compose up` fail with a
-"mutually exclusive network_mode and networks" error. This has been removed.
-
-## Kubernetes Deployment
-
-```bash
-helm install infralens ./helm-chart
-# or
-kubectl apply -f k8s/
-```
-
-## Tech Stack
-
-- **AI**: YOLOv8s detection, Ollama + a local LLM for report generation
-- **Backend**: FastAPI + Uvicorn, SQLAlchemy + PostgreSQL, Alembic
-- **Frontend**: Streamlit
-- **Monitoring**: Prometheus + Grafana, structured JSON logging
-- **DevOps**: Docker Compose, Kubernetes, Helm, Terraform, DVC
-- **GPU**: NVIDIA device plugin for Kubernetes
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| **YOLO model not found** | Train with the command above and copy `best.pt` to `src/ai_models/rust_v8s_best.pt`, or point `MODEL_PATH` at an existing checkpoint |
-| **`ModuleNotFoundError: mlflow / cv2 / PIL`** | These are declared in `pyproject.toml`; re-run `uv sync --extra dev` |
-| **`docker compose up` → "mutually exclusive network_mode"** | Fixed in this commit; pull the latest `docker-compose.yml` |
-| **Ollama connection refused** | Verify Ollama is running on port 11434 |
-| **`/metrics` returns 404** | Fixed in this commit — the endpoint is registered on the app |
-| **Grafana shows "No data"** | The provisioning or dashboards directory is not mounted, or Grafana is not on the `mlops-stack` network so it cannot resolve `prom_<project>` | Run `python3 provision_dashboards.py` — it reports which of the two it is |
-| **Agent report empty** | Check the Ollama model is loaded: `ollama list` |
-
-## Author
-
-Developed by **Khaled Saifullah**.
-
-For collaboration, feature requests, or bug reports, please open an issue or contact the maintainer via the repository issue tracker.
-
-**Last Updated**: October 2026
+**Author** — Khaled Saifullah · [GitHub](https://github.com/ksnishat)

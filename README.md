@@ -31,14 +31,16 @@
 
 ### Recent Improvements (2026)
 🔧 **Makefile** — Standardized commands: `make test`, `make lint`, `make docker-up`, `make k8s-deploy`
-📦 **pyproject.toml** — Modern Python packaging with dependencies, entry points, ruff/mypy config
+📦 **uv + pyproject.toml** — `uv.lock` is the install source; `uv sync --locked` fails if the lock drifts from `pyproject.toml`
 🔒 **Pre-commit hooks** — Ruff, mypy, black, trailing whitespace, YAML validation
 📈 **MLflow Tracking** — YOLOv8 training with MLflow experiment tracking, data augmentation with bbox preservation
-☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring)
+☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring), `fmt`-clean and `validate`-checked in CI
 📊 **Prometheus `/metrics`** — The API now actually exposes the metrics the README promised (it previously returned 404)
+⚡ **Non-blocking LLM calls** — `/analyze-report` runs the LLM in a worker thread; a health check issued during a 52-second generation waited 7.6s before the fix and 1.5ms after
+🔒 **10-job CI** — Python 3.10 + 3.11 matrix, Bandit, pip-audit with a documented allowlist, Trivy SARIF, mypy, Terraform validate, Docker image build-and-serve
 🐛 **Dependency fixes** — `mlflow`, `numpy`, `opencv-python-headless`, `pillow` were imported but undeclared; now in `pyproject.toml`
 🐛 **Compose fix** — removed `network_mode: "bridge"` which conflicted with the implicit network and broke `docker compose up`
-✅ **Test suite green** — 75 unit + 8 live integration tests passing (was 8 failed + 1 error)
+✅ **Test suite green** — 117 unit + 8 live integration tests passing (was 8 failed + 1 error)
 
 ## Architecture
 
@@ -53,18 +55,49 @@ flowchart LR
     API --> UI["Streamlit<br/>visual results"]
     API --> Prom["Prometheus"]
     Prom --> Graf["Grafana"]
+    API --> CI["CI: image build<br/>+ serve assertion"]
 
     classDef data fill:#e3f2fd,stroke:#1565c0,stroke-width:1px,color:#0d47a1
     classDef train fill:#fff3e0,stroke:#e65100,stroke-width:1px,color:#bf360c
     classDef track fill:#f3e5f5,stroke:#6a1b9a,stroke-width:1px,color:#4a148c
     classDef serve fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px,color:#1b5e20
     classDef observe fill:#eceff1,stroke:#37474f,stroke-width:1px,color:#263238
+    classDef gate fill:#fffde7,stroke:#f9a825,stroke-width:1px,color:#f57f17
 
     class IMG,KB data
     class YOLO,ANALYSIS train
     class LLM,REPORT track
     class API,UI serve
     class Prom,Graf observe
+    class CI gate
+```
+
+### Request path
+
+The LLM call takes roughly 52 seconds on CPU. It runs in a worker thread so it
+cannot stall the event loop — before that fix, a health check issued during a
+report waited 7.6 seconds, which is long enough for a Kubernetes liveness probe
+to kill the pod.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as FastAPI
+    participant Y as YOLOv8
+    participant L as Ollama
+
+    C->>A: POST /analyze-report (image)
+    A->>Y: detect rust
+    Y-->>A: boxes + confidences
+    A->>A: summarise detections as text
+    alt LLM available
+        A->>L: generate_safety_report(summary)
+        Note over A,L: asyncio.to_thread — event loop stays free
+        L-->>A: safety report
+    else LLM unavailable
+        A->>A: error string in report field
+    end
+    A-->>C: detections, safety_report
 ```
 
 ## Professional Feature Table
@@ -292,7 +325,7 @@ docker compose up -d          # ollama, api, frontend, grafana, prometheus
 ## Running Tests
 
 ```bash
-PYTHONPATH=src pytest tests/ -v      # 19 passed, 8 skipped
+uv run --frozen --extra dev python -m pytest tests/ -v   # 117 passed, 8 deselected
 ```
 
 The 8 skipped tests are integration tests that need the live docker stack. They

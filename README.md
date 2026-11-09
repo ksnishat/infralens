@@ -152,6 +152,21 @@ precision of 1.00 with 0.294 recall means the model is conservative — it only
 flags corrosion it is confident about. Scaling to a few hundred annotated
 images is the single highest-value next step.
 
+## API endpoints
+
+All endpoints except `/` and `/metrics` require the `X-API-Key` header when auth
+is enabled. Rate limits come from `src/ratelimit.py`.
+
+| Method | Path | Limit | Purpose |
+|--------|------|-------|---------|
+| `GET` | `/` | none | Health probe. Reports `model_loaded` and `auth_enabled` |
+| `POST` | `/predict` | 60/min | Upload an image, get rust detections |
+| `POST` | `/predict-ab` | 60/min | Shadow A/B: champion and challenger run on the same image, response reports both sets of detections, both latencies, and whether they agreed. Returns `503` unless `SHADOW_MODEL_PATH` is set. The champion still serves `/predict`, so a bad challenger cannot affect users |
+| `POST` | `/analyze-report` | 30/min | Detections plus a technical safety report from the local LLM. The LLM call runs in a worker thread, so it does not block the event loop |
+| `GET` | `/drift` | 30/min | Drift state for the detection inputs |
+| `POST` | `/admin/reload-model` | 5/min | Reload the detector without restarting the process |
+| `GET` | `/metrics` | none | Prometheus exposition |
+
 ## Security
 
 | Control | Implementation |

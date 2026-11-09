@@ -41,6 +41,7 @@
 🐛 **Dependency fixes** — `mlflow`, `numpy`, `opencv-python-headless`, `pillow` were imported but undeclared; now in `pyproject.toml`
 🐛 **Compose fix** — removed `network_mode: "bridge"` which conflicted with the implicit network and broke `docker compose up`
 ✅ **Test suite green** — 117 unit + 8 live integration tests passing (was 8 failed + 1 error)
+🖥️ **Dashboard runs on the host** — the Streamlit UI hardcoded the compose DNS name `http://backend:8000`, so every request failed outside a container. `API_URL` is now read from the environment with a localhost default, and `start_all_stacks.sh` launches it on :8502
 
 ## Architecture
 
@@ -381,7 +382,12 @@ python3 provision_dashboards.py infralens   # datasource + dashboard
 | FastAPI (Swagger) | http://localhost:8001/docs |
 | Prometheus | http://localhost:9091 |
 | Grafana | http://localhost:3002 (`admin` / `admin`) |
-| Streamlit UI (compose) | http://localhost:8501 |
+| Streamlit UI | http://localhost:8502 |
+
+> **All four stacks at once:** the root `start_all_stacks.sh` starts the API,
+> MLflow, MinIO, Prometheus, Grafana, TLS proxy and this dashboard for every
+> project, then `verify_live_stack.sh` checks 32 endpoints. The ports in the
+> table above are the ones that script uses.
 
 ### Exposed metrics
 

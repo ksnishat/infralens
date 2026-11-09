@@ -1,11 +1,14 @@
+import os
 
 import requests
 import streamlit as st
 from PIL import Image
 
 # --- CONFIGURATION ---
-# We use the internal Docker DNS name "backend" to talk to the API
-API_URL = "http://backend:8000"
+# Configurable so the dashboard runs both inside docker-compose (where the
+# service is "backend") and on the host (where it is localhost). Hardcoding the
+# compose name made the dashboard unusable outside a container.
+API_URL = os.getenv("API_URL", "http://localhost:8001")
 
 st.set_page_config(page_title="InfraLens AI", page_icon="🏗️", layout="wide")
 

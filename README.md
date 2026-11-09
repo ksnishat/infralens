@@ -154,7 +154,7 @@ Dataset setup, training flags and troubleshooting: **[docs/OPERATIONS.md](./docs
 | TLS proxy | 8444 | | | |
 
 
-`start_all_stacks.sh` (workspace root) starts every service for all four projects; `verify_live_stack.sh` checks 32 endpoints.
+Run this project alone with `./run_stack.sh` (API, MLflow, MinIO, Prometheus, Grafana). Dashboard: `streamlit run src/app/ui.py` (port 8502). Airflow and the Postgres feature store run through `docker compose`. The four-project orchestrator used during development is kept in the author's workspace and is not part of this repository.
 
 ### Security
 
@@ -174,6 +174,18 @@ systems are *production-shaped*, not production-grade.
 |---|---|
 | Unit tests | **117** (8 integration tests run against the live stack) |
 | CI jobs | **11**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, README-count check |
+
+## Roadmap
+
+1. **More annotated data.** Training used 40 images and gives recall 0.294 at
+   precision 1.00. Annotating a few hundred images is the highest-value change,
+   scored on the same test split.
+2. **Ground the safety reports.** The LLM report summarises the detections but
+   is not checked against them. Apply the number-grounding check used in
+   AeroPredict, so a report cannot cite a count the detector did not find.
+3. **Run the retraining DAG end to end**, as with the other projects.
+4. **Measure edge deployment.** Latency and memory have been measured on the
+   development laptop. Measure them on the target edge GPU before quoting them.
 
 ---
 

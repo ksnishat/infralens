@@ -54,10 +54,7 @@ python3 provision_dashboards.py infralens   # datasource + dashboard
 | Grafana | http://localhost:3002 (`admin` / `admin`) |
 | Streamlit UI | http://localhost:8502 |
 
-> **All four stacks at once:** the root `start_all_stacks.sh` starts the API,
-> MLflow, MinIO, Prometheus, Grafana, TLS proxy and this dashboard for every
-> project, then `verify_live_stack.sh` checks 32 endpoints. The ports in the
-> table above are the ones that script uses.
+> **Running the stack:** `./run_stack.sh` starts this project's API, MLflow, MinIO, Prometheus and Grafana. Dashboard: `streamlit run src/app/ui.py` (port 8502). Airflow and the feature store run through `docker compose`. The four-project orchestrator is kept in the author's workspace and is not part of this repository.
 
 ### Exposed metrics
 | Metric | Type | Meaning |
@@ -107,3 +104,42 @@ the running process kept serving the old weights.
 | **`/metrics` returns 404** | Fixed in this commit — the endpoint is registered on the app |
 | **Grafana shows "No data"** | The provisioning or dashboards directory is not mounted, or Grafana is not on the `mlops-stack` network so it cannot resolve `prom_<project>` | Run `python3 provision_dashboards.py` — it reports which of the two it is |
 | **Agent report empty** | Check the Ollama model is loaded: `ollama list` |
+
+## Project Structure
+```plaintext
+infralens/
+├── dags/
+├── docs/
+├── helm-chart/
+├── infrastructure/
+├── k8s/
+├── src/
+│   ├── app/
+│   ├── core/
+│   ├── scripts/
+│   ├── utils/
+│   ├── auth.py
+│   ├── config.py
+│   ├── ratelimit.py
+│   ├── retry.py
+│   ├── uploads.py
+│   └── versioning.py
+├── terraform/
+├── tests/
+├── docker-compose.yml
+├── Dockerfile
+├── Dockerfile.gpu
+├── Dockerfile.serve
+├── dvc.yaml
+├── load_test.py
+├── Makefile
+├── params.yaml
+├── provision_dashboards.py
+├── pyproject.toml
+├── README.md
+├── requirements-gpu.txt
+├── requirements-serve.txt
+├── run_stack.sh
+├── uv.lock
+└── verify_stack.sh
+```

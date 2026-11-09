@@ -98,3 +98,7 @@ crash.log
 build/
 dist/
 .ruff_cache/
+
+# Generated TLS material: never commit a private key.
+infrastructure/tls/*.key
+infrastructure/tls/*.crt

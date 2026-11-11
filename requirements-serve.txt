@@ -1,35 +1,23 @@
-# Serving-only dependencies for the InfraLens API.
+# GENERATED FILE -- do not edit by hand.
+# Regenerate with: python tools/gen_serve_requirements.py
 #
-# The full requirements.txt pulls ultralytics, which drags in the CUDA build of
-# torch (3.2 GB of nvidia wheels) plus triton. The API only needs CPU
-# inference, so the CPU torch index is used here instead.
-#
-# Install with:
-#   pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-#               -r requirements-serve.txt
+# Versions are pinned to uv.lock so the image ships exactly the stack that CI
+# tested. Anything added here by hand will be overwritten, and anything missing
+# here will fail at container start rather than at review time.
 
 --extra-index-url https://download.pytorch.org/whl/cpu
-
-# --- Inference (CPU) ---
-torch==2.14.1+cpu
-torchvision==0.29.1+cpu
-ultralytics
-opencv-python-headless
-pillow
-numpy
-
-# --- API ---
-fastapi
-uvicorn[standard]
-pydantic
-python-multipart
-prometheus-client
-requests
-
-# --- RAG (optional; the API degrades gracefully without it) ---
-langchain-core
-langchain-community
-langchain-ollama
-
-# --- Logging ---
-python-json-logger
+fastapi==0.162.0
+httpx==0.27.2
+numpy==2.2.6
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+prometheus-client==0.26.0
+pydantic==2.14.3
+pydantic-settings==2.15.0
+python-json-logger==4.2.0
+python-multipart==0.0.32
+requests==2.34.2
+slowapi==0.1.10
+tenacity==9.2.1
+ultralytics==8.4.118
+uvicorn==0.54.0

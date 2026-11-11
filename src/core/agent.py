@@ -183,6 +183,7 @@ def _is_ollama_available() -> bool:
     """Check if Ollama is reachable."""
     try:
         import requests
+
         url = f"{_get_ollama_url()}/api/tags"
         response = requests.get(url, timeout=2)
         return response.status_code == 200
@@ -202,7 +203,7 @@ def _template_based_report(detection_data: str) -> str:
     report += f"Total rust spots detected: {rust_count}\n"
     report += "Severity: MEDIUM\n"
     report += "Recommended action: Schedule inspection within 7 days\n"
-    report += "Compliance: ISO 13401 (Safety of machinery)\n"
+    report += "Compliance: DIN EN ISO 12944 (corrosion protection of steel structures)\n"
     report += "=============================\n"
     return report
 
@@ -220,7 +221,7 @@ Format the report as:
 2. Severity assessment (LOW / MEDIUM / HIGH / CRITICAL)
 3. Root cause analysis (brief)
 4. Recommended action (with timeline)
-5. Compliance reference (ISO 13401 / DGUV)
+5. Compliance reference (DIN EN ISO 12944 / DGUV Vorschrift 3)
 
 Write in German and English. Be precise and factual."""
 

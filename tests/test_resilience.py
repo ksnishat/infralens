@@ -162,9 +162,7 @@ class TestDriftRouteIsRateLimited:
         from src.app import main as api
 
         route = next(r for r in api.app.routes if getattr(r, "path", "") == "/drift")
-        wrapped = hasattr(route.endpoint, "__wrapped__") or "limit" in repr(
-            route.endpoint
-        ).lower()
+        wrapped = hasattr(route.endpoint, "__wrapped__") or "limit" in repr(route.endpoint).lower()
         assert wrapped, "the /drift endpoint is not wrapped by the rate limiter"
 
     def test_drift_returns_429_after_the_limit(self):
@@ -191,12 +189,8 @@ class TestAdminRouteIsRateLimited:
     def test_admin_route_is_wrapped_by_the_limiter(self):
         from src.app import main as api
 
-        route = next(
-            r for r in api.app.routes if getattr(r, "path", "") == "/admin/reload-model"
-        )
-        wrapped = hasattr(route.endpoint, "__wrapped__") or "limit" in repr(
-            route.endpoint
-        ).lower()
+        route = next(r for r in api.app.routes if getattr(r, "path", "") == "/admin/reload-model")
+        wrapped = hasattr(route.endpoint, "__wrapped__") or "limit" in repr(route.endpoint).lower()
         assert wrapped, "the /admin/reload-model endpoint is not rate limited"
 
     def test_admin_returns_429_after_the_limit(self):
@@ -258,6 +252,7 @@ class TestReportGenerationDoesNotBlockTheEventLoop:
         original = api.generate_safety_report
         api.generate_safety_report = slow_report
         try:
+
             async def run_two():
                 return await asyncio.gather(
                     asyncio.to_thread(api.generate_safety_report, "a"),
@@ -274,3 +269,28 @@ class TestReportGenerationDoesNotBlockTheEventLoop:
             f"two 0.5s reports took {elapsed:.2f}s, so they serialised; "
             "the LLM call is not being offloaded"
         )
+
+
+class TestReportCitesARealStandard:
+    """The report must cite a standard that exists and matches the README.
+
+    The template fallback cited "ISO 13401 (Safety of machinery)". ISO 13401 is
+    not a machinery-safety standard — ISO 12100 is — and the README's own
+    "Why this matters in Germany" table cites DIN EN ISO 12944 for corrosion.
+    A report that names the wrong standard is worse than one that names none:
+    it looks authoritative and is wrong in the document a customer reads.
+    """
+
+    def test_template_cites_iso_12944(self):
+        from src.core.agent import _template_based_report
+
+        report = _template_based_report("rust spot at x=10 y=20")
+        assert "ISO 12944" in report, "the corrosion standard the README cites is missing"
+        assert "13401" not in report, "ISO 13401 does not exist; do not cite it"
+
+    def test_prompt_cites_iso_12944(self):
+        from src.core.agent import _build_safety_report_prompt
+
+        prompt = _build_safety_report_prompt("rust spot at x=10 y=20")
+        assert "ISO 12944" in prompt
+        assert "13401" not in prompt

@@ -52,8 +52,7 @@ try:
     )
     DRIFT_PSI = Gauge(
         "infralens_detection_drift_psi",
-        "Population Stability Index of the live detection distribution vs the "
-        "validation baseline",
+        "Population Stability Index of the live detection distribution vs the validation baseline",
     )
     DRIFT_STATUS = Gauge(
         "infralens_drift_status",
@@ -101,7 +100,7 @@ except Exception as exc:  # pragma: no cover - logging must never block startup
 app = FastAPI(
     title="InfraLens API",
     description="Industrial Rust Detection & Safety Reporting System",
-    version="2.0.0"
+    version="2.0.0",
 )
 install_rate_limit(app)
 
@@ -204,10 +203,22 @@ async def metrics():
         raise HTTPException(status_code=501, detail="prometheus_client not installed")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+
 @app.get("/")
 async def health_check():
-    """Heartbeat endpoint to check if the API is running."""
-    return {"status": "online", "service": "InfraLens Backend", "auth_enabled": auth_enabled()}
+    """Heartbeat endpoint to check if the API is running.
+
+    ``model_loaded`` is reported so a deployment can be verified end to end:
+    a pod that answers on ``/`` but has no model is a silent failure, and the
+    Helm chart's PVC mount used to cause exactly that.
+    """
+    return {
+        "status": "online",
+        "service": "InfraLens Backend",
+        "model_loaded": model is not None,
+        "auth_enabled": auth_enabled(),
+    }
+
 
 @app.post("/predict", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
 @limiter.limit(PREDICT_LIMIT)
@@ -235,11 +246,13 @@ async def predict_rust(request: Request, file: UploadFile = File(...)):
     for result in results:
         for box in result.boxes:
             cls_name = model.names[int(box.cls)]
-            detections.append({
-                "class": cls_name,
-                "confidence": float(box.conf),
-                "bbox": box.xyxy.tolist()[0]  # [x1, y1, x2, y2]
-            })
+            detections.append(
+                {
+                    "class": cls_name,
+                    "confidence": float(box.conf),
+                    "bbox": box.xyxy.tolist()[0],  # [x1, y1, x2, y2]
+                }
+            )
 
     # 4. Record metrics
     if REQUEST_COUNT is not None:
@@ -263,11 +276,13 @@ def _run_detector(detector, image):
     detections = []
     for result in results:
         for box in result.boxes:
-            detections.append({
-                "class": detector.names[int(box.cls)],
-                "confidence": float(box.conf),
-                "bbox": box.xyxy.tolist()[0],
-            })
+            detections.append(
+                {
+                    "class": detector.names[int(box.cls)],
+                    "confidence": float(box.conf),
+                    "bbox": box.xyxy.tolist()[0],
+                }
+            )
     return detections, elapsed
 
 
@@ -404,8 +419,11 @@ def observe_detection_drift(detections: list, min_samples: int = 30) -> dict:
         if len(_detection_window) < min_samples:
             if DRIFT_STATUS is not None:
                 DRIFT_STATUS.set(-1)
-            return {"enabled": True, "status": "insufficient_data",
-                    "samples": len(_detection_window)}
+            return {
+                "enabled": True,
+                "status": "insufficient_data",
+                "samples": len(_detection_window),
+            }
 
         baseline_sample, live_sample, labels = _drift_samples()
         if baseline_sample.size == 0 or live_sample.size == 0:
@@ -418,8 +436,12 @@ def observe_detection_drift(detections: list, min_samples: int = 30) -> dict:
             DRIFT_PSI.set(psi)
             DRIFT_STATUS.set({"stable": 0, "moderate": 1, "significant": 2}.get(status, -1))
 
-        return {"enabled": True, "status": status, "psi": round(psi, 6),
-                "samples": len(_detection_window)}
+        return {
+            "enabled": True,
+            "status": status,
+            "psi": round(psi, 6),
+            "samples": len(_detection_window),
+        }
     except Exception as exc:  # noqa: BLE001 - drift must never break /predict
         return {"enabled": True, "error": str(exc)}
 
@@ -452,7 +474,10 @@ def drift_report(request: Request):
         "baseline": get_drift_baseline(),
     }
 
-@app.post("/analyze-report", dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
+
+@app.post(
+    "/analyze-report", dependencies=[Depends(require_api_key), Depends(enforce_content_length)]
+)
 @limiter.limit(REPORT_LIMIT)
 async def analyze_and_report(request: Request, file: UploadFile = File(...)):
     """
@@ -512,8 +537,8 @@ async def analyze_and_report(request: Request, file: UploadFile = File(...)):
 
     return {
         "filename": file.filename,
-        "detections": detection_summary, # Raw data for UI
-        "safety_report": safety_report   # The "Consultant" output
+        "detections": detection_summary,  # Raw data for UI
+        "safety_report": safety_report,  # The "Consultant" output
     }
 
 

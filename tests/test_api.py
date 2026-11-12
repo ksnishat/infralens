@@ -40,6 +40,7 @@ def dummy_image(tmp_path):
     """Create a small dummy JPEG image for upload tests."""
     try:
         from PIL import Image
+
         img = Image.new("RGB", (224, 224), color="gray")
         img.save(tmp_path / "dummy.jpg")
         return tmp_path / "dummy.jpg"
@@ -64,6 +65,20 @@ class TestHealth:
         assert data["status"] == "online"
         assert data["service"] == "InfraLens Backend"
 
+    def test_health_reports_model_loaded(self, client):
+        """A deployment is only healthy when the model actually loaded.
+
+        The Helm chart used to mount an empty PVC over /app/models, which hid
+        the baked-in weights: the pod answered on / while every prediction
+        came from a fallback. The health body has to expose that state so a
+        deploy gate can catch it.
+        """
+        response = client.get("/")
+        assert response.status_code == 200
+        data = response.json()
+        assert "model_loaded" in data
+        assert isinstance(data["model_loaded"], bool)
+
 
 class TestDetection:
     """Test /predict endpoint."""
@@ -71,7 +86,9 @@ class TestDetection:
     @requires_model
     def test_predict_returns_detections_list(self, client, dummy_image):
         with open(dummy_image, "rb") as f:
-            response = client.post("/predict", files={"file": ("dummy.jpg", f.read(), "image/jpeg")})
+            response = client.post(
+                "/predict", files={"file": ("dummy.jpg", f.read(), "image/jpeg")}
+            )
         assert response.status_code == 200
         data = response.json()
         assert "filename" in data
@@ -166,6 +183,7 @@ class TestDockerComposeHealth:
 
     def test_docker_compose_config(self):
         import yaml
+
         with open("docker-compose.yml") as f:
             config = yaml.safe_load(f)
         required_services = ["backend", "ollama", "frontend"]

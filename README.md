@@ -20,7 +20,7 @@
 
 ---
 
-**At a glance** — mAP50 **0.399** · 119 unit tests · 11 CI jobs · YOLOv8s + shadow A/B + local LLM reports
+**At a glance** — mAP50 **0.399** · 119 unit tests · 12 CI jobs · YOLOv8s + shadow A/B + local LLM reports
 
 ### What it does
 

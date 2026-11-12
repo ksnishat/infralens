@@ -43,7 +43,13 @@ runs/
 *.pkl
 *.onnx
 *.h5
-ai_models/
+# ai_models/ used to be excluded as a whole directory, which also excluded the
+# training scripts (augment.py, download_data.py) that live beside the weights.
+# Exclude only the weight files so the scripts stay in the repository and the
+# trained detector ships in Dockerfile.serve, which COPYs src/.
+src/ai_models/*.pt
+src/ai_models/*.pth
+src/ai_models/*.onnx
 # A bare `core` pattern matches any path component named `core`, including the
 # src/core/ package — which silently excluded src/core/agent.py and its
 # __init__.py from the repository. The API imports that module inside a

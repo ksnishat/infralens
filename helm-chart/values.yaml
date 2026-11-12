@@ -22,7 +22,10 @@ resources:
   limits:
     cpu: 2
     memory: 2Gi
-    nvidia.com/gpu: 1
+    # The YOLO model runs on CPU in the serve image. Set this to 1 only on a
+    # cluster with an NVIDIA device plugin; otherwise the pod stays Pending
+    # with "Insufficient nvidia.com/gpu".
+    nvidia.com/gpu: 0
 
 hpa:
   enabled: true
@@ -40,8 +43,12 @@ env:
   OLLAMA_HOST: http://ollama-service:11434
   OLLAMA_MODEL: llama3
 
+# The serve image bakes the trained weights into /app/models. Mounting an
+# empty PVC over that path hides them and the API starts with no model, so
+# persistence is off by default. Enable it only when you supply weights
+# through the volume instead of the image.
 persistence:
-  enabled: true
+  enabled: false
   size: 5Gi
   accessMode: ReadWriteOnce
 

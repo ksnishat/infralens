@@ -40,10 +40,15 @@ spec:
             limits:
               cpu: {{ .Values.resources.limits.cpu }}
               memory: {{ .Values.resources.limits.memory }}
-              # `index` is required because the key contains dots. Writing
-              # `.Values.resources.limits.nvidia.com/gpu` makes Helm treat
-              # nvidia/com/gpu as nested keys and the template fails to parse.
-              nvidia.com/gpu: {{ index .Values.resources.limits "nvidia.com/gpu" }}
+              {{- /* `index` is required because the key contains dots. Writing
+                     `.Values.resources.limits.nvidia.com/gpu` makes Helm treat
+                     nvidia/com/gpu as nested keys and the template fails to
+                     parse. Omitted entirely when 0 so clusters without an
+                     NVIDIA device plugin can still schedule the pod. */}}
+              {{- $gpu := index .Values.resources.limits "nvidia.com/gpu" | default 0 }}
+              {{- if gt (int $gpu) 0 }}
+              nvidia.com/gpu: {{ $gpu }}
+              {{- end }}
           livenessProbe:
             httpGet:
               path: /
@@ -56,10 +61,14 @@ spec:
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
+          {{- if .Values.persistence.enabled }}
           volumeMounts:
             - name: model-storage
               mountPath: /app/models
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
       volumes:
         - name: model-storage
           persistentVolumeClaim:
             claimName: {{ include "infralens.fullname" . }}-models-pvc
+      {{- end }}

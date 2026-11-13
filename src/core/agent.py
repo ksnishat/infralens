@@ -160,6 +160,63 @@ def generate_safety_report(detection_data: str) -> str:
         return _template_based_report(detection_data)
 
 
+def generate_safety_report_with_tools(
+    detection_data: str,
+    structure_id: str | None = None,
+    max_steps: int = 4,
+    history_store: dict | None = None,
+) -> tuple[str, dict]:
+    """Generate a report through the bounded tool loop.
+
+    Returns the report and its audit trail. The trail is the point: it records
+    which tools ran, with what arguments, and whether the step budget was
+    exhausted, so a reader can tell a complete report from a partial one.
+
+    Falls back to the single-prompt path when Ollama is unreachable, so the
+    endpoint keeps working without a model -- but the fallback is the template,
+    which is labelled as such.
+    """
+    from src.core.agent_loop import run_agent
+
+    if not _is_ollama_available():
+        return _template_based_report(detection_data), {
+            "steps": 0,
+            "tool_calls": 0,
+            "budget_exhausted": False,
+            "parse_failures": 0,
+            "trace": [],
+            "fallback": "template (Ollama unreachable)",
+        }
+
+    url = f"{_get_ollama_url()}/api/generate"
+    model = _get_ollama_model()
+
+    def llm(prompt: str) -> str:
+        payload = {"model": model, "prompt": prompt, "stream": False}
+        response = _post_generate(url, payload)
+        if response.status_code != 200:
+            raise ConnectionError(f"Ollama returned {response.status_code}")
+        return response.json().get("response", "")
+
+    tool_kwargs = {}
+    if structure_id:
+        tool_kwargs["fetch_structure_history"] = {
+            "structure_id": structure_id,
+            "store": history_store or {},
+        }
+
+    run = run_agent(
+        detection_data,
+        llm,
+        max_steps=max_steps,
+        tool_kwargs=tool_kwargs,
+        structure_id=structure_id,
+    )
+    trail = run.audit_trail()
+    trail["model"] = model
+    return run.answer, trail
+
+
 @retry_transient(attempts=3, base_delay=0.4, max_delay=4.0)
 def _post_generate(url: str, payload: dict):
     """POST to Ollama, retrying transient transport failures only.
@@ -227,4 +284,4 @@ Write in German and English. Be precise and factual."""
 
 
 # Expose for FastAPI app
-__all__ = ["generate_safety_report"]
+__all__ = ["generate_safety_report", "generate_safety_report_with_tools"]

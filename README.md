@@ -20,7 +20,7 @@
 
 ---
 
-**At a glance** — mAP50 **0.399** · 120 unit tests · 12 CI jobs · YOLOv8s + shadow A/B + local LLM reports
+**At a glance** — mAP50 **0.399** · 162 unit tests · 13 CI jobs · YOLOv8s + shadow A/B + local LLM reports
 
 ### What it does
 
@@ -172,8 +172,8 @@ systems are *production-shaped*, not production-grade.
 
 | | |
 |---|---|
-| Unit tests | **120** (8 integration tests run against the live stack) |
-| CI jobs | **11**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, README-count check |
+| Unit tests | **162** (8 integration tests run against the live stack) |
+| CI jobs | **13**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, Helm deploy to kind, README-count check |
 
 ## Roadmap
 

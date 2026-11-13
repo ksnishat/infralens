@@ -81,10 +81,23 @@ except ImportError:  # pragma: no cover
 # Import our new AI Agent (The Brain)
 # Ensure you created src/core/agent.py as discussed!
 try:
-    from src.core.agent import generate_safety_report
+    from src.core.agent import generate_safety_report, generate_safety_report_with_tools
 except ImportError:
     print("WARNING: Could not import AI Agent. Make sure src/core/agent.py exists.")
     generate_safety_report = None
+    generate_safety_report_with_tools = None
+
+# The bounded tool loop keeps a short in-process history so /compliance/
+# audit-trail can show what recent runs actually did. Bounded on purpose: an
+# unbounded list is a slow memory leak in a long-running service.
+try:
+    from src.core.agent_loop import TOOL_SCHEMAS
+except ImportError:  # pragma: no cover - agent_loop ships with the package
+    TOOL_SCHEMAS = []
+
+AGENT_MAX_STEPS = 4
+AGENT_AUDIT_KEEP = 20
+_agent_audit: list[dict] = []
 
 # Structured JSON logging. src/utils/logging_config.py existed but was never
 # called, so the service logged unstructured text and the request_id context
@@ -475,6 +488,32 @@ def drift_report(request: Request):
     }
 
 
+@app.get("/compliance/audit-trail")
+@limiter.limit(DRIFT_LIMIT)
+def compliance_audit_trail(request: Request):
+    """Return the tool-call trail of the most recent agent runs.
+
+    This is the inspectable half of the agent: which tools ran, with what
+    arguments, and whether the step budget was exhausted. A run that hit the
+    budget produced a partial report, and a reader must be able to tell that
+    from a complete one.
+
+    Deliberately *not* described as EU AI Act compliance. The record shape is
+    modelled on what Article 12 would require, as an exercise in AI
+    governance; a portfolio service is not a deployed high-risk system and
+    claiming otherwise would not survive a follow-up question.
+    """
+    return {
+        "note": (
+            "Governance-shaped audit trail, not a compliance certification. "
+            "Models the record Article 12 would require."
+        ),
+        "max_steps": AGENT_MAX_STEPS,
+        "tools": [t["name"] for t in TOOL_SCHEMAS],
+        "runs": list(_agent_audit)[-AGENT_AUDIT_KEEP:],
+    }
+
+
 @app.post(
     "/analyze-report", dependencies=[Depends(require_api_key), Depends(enforce_content_length)]
 )
@@ -520,25 +559,55 @@ async def analyze_and_report(request: Request, file: UploadFile = File(...)):
         llm_input += f"\n\nTotal Rust Spots: {rust_count}"
         llm_input += f"\nMax Confidence: {highest_conf:.2f}"
 
-    # 4. Run Llama 3 (The Brain) via our Agent
-    if generate_safety_report:
+    # 4. Run the bounded tool loop (The Brain) via our Agent.
+    #
+    # The loop replaces the single-prompt call. It can look up ISO 12944
+    # corrosivity categories and prior inspections instead of writing the
+    # report from the detection text alone, and it records what it did.
+    audit: dict = {}
+    if generate_safety_report_with_tools:
         try:
-            print("🧠 Sending data to Llama 3...")
-            # The LLM call is synchronous and takes tens of seconds on CPU, so
-            # it runs in a worker thread. Calling it directly from this async
+            print("🧠 Running the safety agent...")
+            # The call is synchronous and takes tens of seconds on CPU, so it
+            # runs in a worker thread. Calling it directly from this async
             # handler blocked the event loop: a health check issued while a
             # report was generating waited 7.6s, because every request queued
             # behind the one holding the loop.
+            structure_id = request.headers.get("X-Structure-Id")
+            safety_report, audit = await asyncio.to_thread(
+                generate_safety_report_with_tools,
+                llm_input,
+                structure_id,
+                AGENT_MAX_STEPS,
+            )
+        except Exception as e:
+            safety_report = f"Error generating report: {str(e)}"
+            audit = {"error": str(e)}
+    elif generate_safety_report:
+        # Older single-prompt path, kept for when agent_loop is unavailable.
+        try:
             safety_report = await asyncio.to_thread(generate_safety_report, llm_input)
+            audit = {"fallback": "single-prompt agent"}
         except Exception as e:
             safety_report = f"Error generating report: {str(e)}"
     else:
         safety_report = "AI Agent module not found. Check server logs."
+        audit = {"error": "agent module unavailable"}
+
+    if audit and "error" not in audit:
+        audit["filename"] = file.filename
+        _agent_audit.append(audit)
+        del _agent_audit[:-AGENT_AUDIT_KEEP]
 
     return {
         "filename": file.filename,
         "detections": detection_summary,  # Raw data for UI
         "safety_report": safety_report,  # The "Consultant" output
+        "audit": {
+            "steps": audit.get("steps", 0),
+            "tool_calls": audit.get("tool_calls", 0),
+            "budget_exhausted": audit.get("budget_exhausted", False),
+        },
     }
 
 

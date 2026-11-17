@@ -20,7 +20,7 @@
 
 ---
 
-**At a glance** — mAP50 **0.399** · 162 unit tests · 13 CI jobs · YOLOv8s + shadow A/B + local LLM reports
+**At a glance** — mAP50 **0.421** · 162 unit tests · 13 CI jobs · YOLOv8s + shadow A/B + local LLM reports
 
 ### What it does
 
@@ -99,8 +99,8 @@ Reproduced locally on an NVIDIA RTX 3050 Ti (4 GB) with Ultralytics 8.4.
 | Epochs | 40 (GPU) |
 | Precision | 1.00 |
 | Recall | 0.294 |
-| **mAP50** | **0.399** |
-| mAP50-95 | 0.259 |
+| **mAP50** | **0.421** |
+| mAP50-95 | 0.257 |
 The dataset is deliberately small (40 training images), so recall and mAP are
 low. This is a data-volume limitation, not a pipeline defect. The reported
 precision of 1.00 with 0.294 recall means the model is conservative — it only
